@@ -1,7 +1,7 @@
 import sqlite3
 import os
 import json
-from flask import Flask, render_template_string, request, redirect, url_for, jsonify
+from flask import Flask, render_template_string, request, redirect, url_for, jsonify, send_from_directory
 
 app = Flask(__name__)
 DB_NAME = "LIGA_ARG_2025.db"
@@ -444,6 +444,11 @@ def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', m
 
 # --- RUTAS ---
 
+@app.route('/favicon.ico')
+@app.route('/lpf.png')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'lpf.png', mimetype='image/png')
 @app.route('/')
 def index():
     """Panel principal. Procesa los partidos de la jornada seleccionada."""
@@ -640,7 +645,10 @@ def team_page(team_id):
 INDEX_HTML = '''
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><title>ARG STATS</title><script src="https://cdn.tailwindcss.com"></script><style>body{background-color:#0f172a;color:#f8fafc;}</style></head>
+<head>
+    <meta charset="UTF-8"><title>ARG STATS</title><script src="https://cdn.tailwindcss.com"></script><style>body{background-color:#0f172a;color:#f8fafc;}</style>
+    <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
+</head>
 <body class="p-8 font-sans">
     <div class="max-w-5xl mx-auto">
         <header class="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
@@ -651,7 +659,7 @@ INDEX_HTML = '''
             </nav>
         </header>
 
-        <div class="flex sticky top-0 justify-center mb-12">
+        <div class="flex sticky top-0 z-10 justify-center mb-12">
             <form id="filter-form" class="flex flex-wrap items-stretch justify-center gap-0 bg-slate-800/40 rounded-[2rem] border border-slate-700/50 backdrop-blur-md shadow-2xl overflow-hidden">
                 <div class="flex flex-col border-r border-slate-700/50 p-4 hover:bg-slate-700/20 transition-colors">
                     <label class="text-[9px] font-black uppercase text-sky-400 mb-1 tracking-[0.2em] text-center">Temporada</label>
@@ -732,9 +740,9 @@ INDEX_HTML = '''
                     </div>
                 </div>
 
-                <div class="mt-6 pt-5 border-t border-slate-700/50 flex justify-between items-center text-[11px] font-bold text-slate-500 uppercase italic tracking-tighter">
+                <div class="mt-6 pt-5 border-t border-slate-700/50 flex justify-between items-center text-[11px] font-bold text-white-500 uppercase italic tracking-tighter">
                     <span>Árbitro: {{ m.referee or 'Por designar' }}</span>
-                    <span class="text-sky-500 font-black">Analizar Pizarra →</span>
+                    <span   class="text-sky-500 font-black">Analizar Pizarra →</span>
                 </div>
             </a>
             {% endfor %}
@@ -766,6 +774,7 @@ STATS_HTML = '''
 <html lang="es">
 <head>
     <meta charset="UTF-8"><title>LIGA STATS - ARG STATS</title>
+    <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; color: #f8fafc; }
@@ -1050,7 +1059,10 @@ TEAM_HTML = '''
     }
     #player-ranking-list {  min-height: 500px; display: flex; flex-direction: column; }
 </style>
-<head><meta charset="UTF-8"><title>{{ team_name }} - ARG STATS</title><script src="https://cdn.tailwindcss.com"></script><style>body{background-color:#0f172a;color:#f8fafc;}</style></head>
+<head><meta charset="UTF-8">
+    <title>{{ team_name }} - ARG STATS</title><script src="https://cdn.tailwindcss.com"></script><style>body{background-color:#0f172a;color:#f8fafc;}</style>
+    <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
+</head>
 <body class="p-8 font-sans">
     <div class="max-w-7xl mx-auto space-y-12">
         <header class="flex justify-between items-center">
@@ -1253,6 +1265,7 @@ DETAIL_HTML = '''
 <html lang="es">
 <head>
     <meta charset="UTF-8"><title>{{ match.home_team }} vs {{ match.away_team }}</title>
+    <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; color: #f8fafc; overflow-x: hidden; }
@@ -1674,6 +1687,7 @@ DETAIL_HTML = '''
     </script>
 </body></html>
 '''
+
 if __name__ == '__main__':
     init_notes_table()
     port = int(os.environ.get("PORT", 5000))

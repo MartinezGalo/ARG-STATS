@@ -36,6 +36,7 @@ def initialize_database():
             team_id TEXT,
             player_name TEXT,
             position TEXT,
+            shirt_number INTEGER,
             is_starter BOOLEAN,
             minutes_played INTEGER,
             rating REAL,

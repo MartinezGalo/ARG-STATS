@@ -36,7 +36,7 @@ def initialize_database():
             team_id TEXT,
             player_name TEXT,
             position TEXT,
-            shirt_number INTEGER,
+            shirt_number TEXT,
             is_starter BOOLEAN,
             minutes_played INTEGER,
             rating REAL,
@@ -82,6 +82,12 @@ def initialize_database():
             FOREIGN KEY(match_id, player_id) REFERENCES player_match_details(match_id, player_id)
         )
     ''')
+
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_pmd_player_match ON player_match_details (player_id, match_id);
+        CREATE INDEX IF NOT EXISTS idx_pmd_team ON player_match_details (team_id);
+        CREATE INDEX IF NOT EXISTS idx_shots_player_match ON shots (player_id, match_id);
+        CREATE INDEX IF NOT EXISTS idx_matches_date ON matches (date DESC);''')
 
     # connection.commit(): Guarda permanentemente todos los cambios realizados por el cursor.
     connection.commit()

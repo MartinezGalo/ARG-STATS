@@ -2294,5 +2294,14 @@ DETAIL_HTML = '''
 
 if __name__ == '__main__':
     init_notes_table()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    
+    is_render = os.environ.get("RENDER", False)
+    
+    if is_render:
+        # Configuración para Render
+        port = int(os.environ.get("PORT", 5000))
+        app.run(host='0.0.0.0', port=port)
+    else:
+        # Configuración para LOCAL
+        print("--- CORRIENDO EN MODO LOCAL ---")
+        app.run(host='127.0.0.1', port=5001, debug=True)

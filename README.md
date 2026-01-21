@@ -16,25 +16,20 @@ La aplicación integra un **motor predictivo**, una **pizarra táctica interacti
 
 ---
 
-## 🚀 Funcionalidades Clave
+🌐 Demo Online
 
-### 1. Centro de Monitoreo de Jornada
+La aplicación puede previsualizarse en producción en el siguiente enlace:
 
-- **Selector de Jornada tipo Cápsula**
-  - Navegación por flechas entre fechas.
-  - Sincronización por temporada y torneo (Apertura / Clausura).
+🔗 https://arg-stats.onrender.com
 
-- **Predicciones Pre‑Match Integradas**
-  - Probabilidades de:
-    - Tiros
-    - Cabezazos
-    - Tarjetas
-    - Faltas
-  - Visualización directa en la tarjeta del partido.
+El despliegue se realiza en Render y puede tardar unos segundos en iniciar si la instancia está en reposo.
 
 ---
 
-### 2. Match Intelligence & Pizarra Táctica
+## 🚀 Funcionalidades Clave
+
+
+### 1. Match Intelligence & Pizarra Táctica
 
 - **Motor Predictivo Propio**
   - Cruza rankings ofensivos y defensivos de ambos equipos.
@@ -52,12 +47,12 @@ La aplicación integra un **motor predictivo**, una **pizarra táctica interacti
 
 ---
 
-### 3. Engine de Estadísticas Avanzadas
+### 2. Engine de Estadísticas Avanzadas
 
 - **Normalización p90**
   - Todas las métricas de jugadores se ajustan por minutos jugados.
 
-- **Filtro Last‑N Matches**
+- **Filtro de Ultimos 5 Partidos**
   - Rankings basados solo en los últimos N partidos por equipo.
   - Detección de rachas, picos de forma y caídas de rendimiento.
 
@@ -68,7 +63,7 @@ La aplicación integra un **motor predictivo**, una **pizarra táctica interacti
 
 ---
 
-### 4. Perfil de Jugador 360°
+### 3. Perfil de Jugador 360°
 
 Modal dinámico con:
 
@@ -91,7 +86,7 @@ Modal dinámico con:
 
 ---
 
-### 5. Análisis de Equipos
+### 4. Análisis de Equipos
 
 - Historial completo de partidos.
 - Rankings globales:
@@ -101,7 +96,7 @@ Modal dinámico con:
 
 ---
 
-### 6. Análisis de Árbitros
+### 5. Análisis de Árbitros
 
 - **Perfiles Disciplinarios**
   - Promedios reales por partido.
@@ -188,7 +183,7 @@ python app.py
 Abrir en el navegador:
 
 ```
-http://127.0.0.1:5000
+http://127.0.0.1:5001
 ```
 
 ---
@@ -203,5 +198,7 @@ http://127.0.0.1:5000
 ## 📌 Estado del Proyecto
 
 En desarrollo activo.
+
+
 
 

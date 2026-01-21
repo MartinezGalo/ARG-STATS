@@ -379,7 +379,7 @@ def get_league_player_stats(rank_type='shots', filter_type='all',order_by='total
         GROUP BY pmd.player_id      
         HAVING SUM(pmd.fouls_committed) > 0 
         ORDER BY {order_by} DESC LIMIT {limit}'''
-    elif rank_type == 'fouls_rec':
+    elif rank_type in ('fouls_rec', 'fouls_received'):
         query = f'''    
         SELECT pmd.player_id as id, pmd.player_name as name, pmd.team_id, {team_sub} as team_name, SUM(pmd.fouls_received) as total, pj_table.pj as pj, pj_table.minutes_played as minutes_played, (CAST(SUM(pmd.fouls_received) AS FLOAT) / pj_table.minutes_played)*90 as avg
         FROM player_match_details pmd 
@@ -428,7 +428,7 @@ def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', o
         elif rank_type == 'fouls':
             q = f"SELECT pmd.player_id as pid, pmd.player_name as pname, pmd.team_id as t_id, SUM(pmd.fouls_committed) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
             rows = conn.execute(q, (str(tid),)).fetchall()
-        elif rank_type == 'fouls_rec':
+        elif rank_type in ('fouls_rec', 'fouls_received'):
             q = f"SELECT pmd.player_id as pid, pmd.player_name as pname, pmd.team_id as t_id, SUM(pmd.fouls_received) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
             rows = conn.execute(q, (str(tid),)).fetchall()
         else:
@@ -1217,7 +1217,7 @@ STATS_HTML = '''
             <div class="bg-slate-800/40 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col h-full overflow-hidden">
                 <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700/50 flex justify-between items-center">
                     <h3 class="font-black text-sky-400 uppercase text-[13px] tracking-widest">${stat.title}</h3>
-                    ${stat.api ? `<button id="l5-btn-${id}" onclick='toggleStatLast5("${id}")' class="text-[10px] font-black uppercase px-3 py-1 rounded-full border ${last5Active ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400'}">Últimos 5</button>` : ''}
+                    ${stat.api ? `<button id="l5-btn-${id}" onclick='toggleStatLast5("${id}")' class="text-[10px] font-black uppercase px-3 py-1 rounded-full border ${last5Active ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400'}">Ultimos 5 Partidos</button>` : ''}
                 </div>
 
                 <div class="p-4 flex-1 space-y-2">
@@ -1438,7 +1438,7 @@ TEAM_HTML = '''
             <div class="space-y-3">
                 <div class="flex justify-between items-center border-l-4 border-orange-500 pl-4">
                     <h2 class="text-xl font-black uppercase italic tracking-tighter">Estadísticas Plantel</h2>
-                    <button onclick="toggleL5()" id="l5-btn" class="text-[9px] px-3 py-1 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Últimos 5</button>
+                    <button onclick="toggleL5()" id="l5-btn" class="text-[9px] px-3 py-1 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
                 </div>
                 <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
                     <div class="flex flex-wrap justify-center gap-1 mb-2">
@@ -1446,7 +1446,7 @@ TEAM_HTML = '''
                         <button onclick="updateTeamRanking('{{ team_id }}', 'headers', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Cabeza</button>
                         <button onclick="updateTeamRanking('{{ team_id }}', 'yellows', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Tarj.</button>
                         <button onclick="updateTeamRanking('{{ team_id }}', 'fouls', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Recib.</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas Rec.</button>
                     </div>
                     <div id="sub-filters" class="sub-menu flex gap-1 justify-center mt-2" style="display:none;">
                         <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" id="sub-all" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-black sub-btn">Todos</button>
@@ -1848,14 +1848,14 @@ DETAIL_HTML = '''
                     <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
                         <div class="flex justify-between items-center w-full mb-2">
                             <h4 class="text-[14px] font-black text-sky-400 uppercase italic tracking-widest">Rankings Local</h4>
-                            <button onclick="toggleL5('home', '{{ match.id_home_team }}')" id="h-l5-btn" class="text-[9px] px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Últimos 5</button>
+                            <button onclick="toggleL5('home', '{{ match.id_home_team }}')" id="h-l5-btn" class="text-[9px] px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
                         </div>
                         <div class="flex flex-wrap justify-center gap-1 mb-2">
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold h-rank-btn" id="h-btn-main">Tiros</button>
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'headers', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Cabeza</button>
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'yellows', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Tarj.</button>
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Faltas</button>
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Recib.</button>
+                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Faltas Rec.</button>
                         </div>
                         <div id="home-sub-filters" class="sub-menu flex gap-1 justify-center mt-2" style="display:none;">
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)" id="home-sub-all" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-black h-sub-btn">Todos</button>
@@ -1904,14 +1904,14 @@ DETAIL_HTML = '''
                     <div class="flex flex-col items-center border-b border-red-500/20 pb-2 mb-3">
                         <div class="flex justify-between items-center w-full mb-2 flex-row-reverse">
                             <h4 class="text-[14px] font-black text-red-500 uppercase italic tracking-widest">Rankings Visita</h4>
-                            <button onclick="toggleL5('away', '{{ match.id_away_team }}')" id="v-l5-btn" class="text-[9px] px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Últimos 5</button>
+                            <button onclick="toggleL5('away', '{{ match.id_away_team }}')" id="v-l5-btn" class="text-[9px] px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
                         </div>
                         <div class="flex flex-wrap justify-center gap-1 mb-2">
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold v-rank-btn">Tiros</button>
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'headers', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Cabeza</button>
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'yellows', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Tarj.</button>
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Faltas</button>
-                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Recib.</button>
+                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Faltas Rec.</button>
                         </div>
                         <div id="away-sub-filters" class="sub-menu flex gap-1 justify-center mt-2">
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)" id="away-sub-all" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-black v-sub-btn">Todos</button>

@@ -1,6 +1,6 @@
-# ⚽ ARG STATS — Sistema de Scouting y Analítica de Fútbol Pro
+# ⚽ ARG STATS — Sistema de Analítica de Fútbol
 
-**ARG STATS** es una plataforma **Full‑Stack** de analítica avanzada orientada al **scouting profesional**, el **análisis táctico** y la **predicción de eventos** en el fútbol argentino. Está diseñada para trabajar directamente sobre **datos reales de partidos**, priorizando consistencia estadística, comparabilidad y rendimiento.
+**ARG STATS** es una plataforma **Full‑Stack** de analítica avanzada orientada al **análisis táctico** y la **predicción de eventos** en el fútbol argentino. Está diseñada para trabajar directamente sobre **datos reales de partidos**, priorizando consistencia estadística, comparabilidad y rendimiento.
 
 La aplicación integra un **motor predictivo**, una **pizarra táctica interactiva**, rankings normalizados y perfiles 360° de jugadores, equipos y árbitros.
 

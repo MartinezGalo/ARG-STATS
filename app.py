@@ -6,11 +6,11 @@ from flask import Flask, render_template_string, request, redirect, url_for, jso
 app = Flask(__name__)
 DB_NAME = "LIGA_ARG_2025.db"
 
-# --- LÓGICA DE BASE DE DATOS Y ESTADÍSTICAS ---
+# --- LoGICA DE BASE DE DATOS Y ESTADiSTICAS ---
 
 def get_db_connection():
     """
-    Establece la conexión con la base de datos SQLite.
+    Establece la conexion con la base de datos SQLite.
     row_factory = sqlite3.Row permite acceder a los campos por nombre (ej: fila['id']).
     """
     conn = sqlite3.connect(DB_NAME, timeout=30)
@@ -34,7 +34,7 @@ def init_notes_table():
 
 def get_referee_rankings():
     """
-    Calcula la posición de cada árbitro en un top basado en el volumen total de eventos.
+    Calcula la posicion de cada arbitro en un top basado en el volumen total de eventos.
     Retorna dos diccionarios: {NombreArbitro: PosicionRanking} para tarjetas y faltas.
     """
     conn = get_db_connection()
@@ -55,7 +55,7 @@ def get_referee_rankings():
 
 def get_referee_detailed_tops():
     """
-    Obtiene métricas detalladas (Total, PJ, Promedio) de los árbitros para la página /stats.
+    Obtiene metricas detalladas (Total, PJ, Promedio) de los arbitros para la pagina /stats.
     Ordena los resultados por el valor Total acumulado.
     """
     conn = get_db_connection()
@@ -76,7 +76,7 @@ def get_referee_detailed_tops():
            [{"name": r['name'], "total": r['total'], "pj": r['pj'], "avg": round(r['avg'], 2)} for r in ref_f_q]
 
 def get_last_finished_match_id(team_id):
-    """Busca el ID del partido finalizado más reciente de un equipo para extraer su táctica actual."""
+    """Busca el ID del partido finalizado mas reciente de un equipo para extraer su tactica actual."""
     conn = get_db_connection()
     res = conn.execute('''
         SELECT m.id FROM matches m 
@@ -111,8 +111,8 @@ def get_lineup_data(match_id, team_id, cards_dict):
 
 def get_team_stats_core(category='shots', filter_type='all', order_by='total', limit=None):
     """
-    Función unificada que obtiene estadísticas completas de equipos.
-    Si `limit` está presente, calcula las métricas basadas en los últimos N partidos de cada equipo.
+    Funcion unificada que obtiene estadisticas completas de equipos.
+    Si `limit` esta presente, calcula las metricas basadas en los ultimos N partidos de cada equipo.
     Retorna dos listas de diccionarios (A favor y En contra).
     """
     conn = get_db_connection()
@@ -121,7 +121,7 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
 
     sort_metric = "total" if order_by == 'total' else "avg"
 
-    # Si no se pide limit, reutilizamos la implementación previa que usa consultas globales
+    # Si no se pide limit, reutilizamos la implementacion previa que usa consultas globales
     if not limit:
         if category == 'shots':
             where_f = "AND on_target = 1" if filter_type == 'target' else "AND inside_box = 0" if filter_type == 'long' else ""
@@ -186,13 +186,13 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
 
         return structure(res_made), structure(res_against)
 
-    # Si se solicita limitar a últimos N partidos por equipo, hacemos cálculo por equipo
+    # Si se solicita limitar a ultimos N partidos por equipo, hacemos calculo por equipo
     results_made = []
     results_against = []
     team_ids = list(teams_map.keys())
 
     for tid in team_ids:
-        # Obtener últimos `limit` partidos finalizados donde participó el equipo
+        # Obtener ultimos `limit` partidos finalizados donde participo el equipo
         match_rows = conn.execute('SELECT id FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?', (str(tid), str(tid), limit)).fetchall()
         match_ids = [r[0] for r in match_rows]
         pj = len(match_ids)
@@ -238,7 +238,7 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
 
     conn.close()
 
-    # Ordenamos por la métrica solicitada
+    # Ordenamos por la metrica solicitada
     key = (lambda x: x['total']) if order_by == 'total' else (lambda x: x['avg'])
     results_made.sort(key=key, reverse=True)
     results_against.sort(key=key, reverse=True)
@@ -248,7 +248,7 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
 def get_rankings_from_stats(category='shots', filter_type='all', order_by='total'):
     """Helper para el predictor: convierte las listas de stats en dicts de ranking {ID: Posicion}"""
     made_list, against_list = get_team_stats_core(category, filter_type, order_by)
-    # enumerate genera la posición basándose en el orden de la consulta SQL
+    # enumerate genera la posicion basandose en el orden de la consulta SQL
     rank_made = {item['id']: i+1 for i, item in enumerate(made_list)}
     rank_against = {item['id']: i+1 for i, item in enumerate(against_list)}
     return rank_made, rank_against
@@ -256,7 +256,7 @@ def get_rankings_from_stats(category='shots', filter_type='all', order_by='total
 def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', limit=None):
     """
     Ranking de jugadores individuales. 
-    Si limit tiene valor (ej: 5), busca solo los últimos N partidos finalizados del equipo.
+    Si limit tiene valor (ej: 5), busca solo los ultimos N partidos finalizados del equipo.
     """
     conn = get_db_connection()
     lt_sub = "(SELECT team_id FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
@@ -289,9 +289,9 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
 
 def get_prediction_logic(home_id, away_id, category='shots', filter_type='all', referee=None, precalc_ranks=None):
     """
-    Motor de predicción probabilística. 
-    Cruza los rankings de ataque/defensa y aplica la rigurosidad del árbitro en Tarjetas y Faltas.
-    Retorna los rankings individuales de cada parte para su visualización en la UI.
+    Motor de prediccion probabilistica. 
+    Cruza los rankings de ataque/defensa y aplica la rigurosidad del arbitro en Tarjetas y Faltas.
+    Retorna los rankings individuales de cada parte para su visualizacion en la UI.
     """
     if precalc_ranks: m_ranks, a_ranks, ref_ranks = precalc_ranks
     else: m_ranks, a_ranks = get_rankings_from_stats(category, filter_type, order_by= 'total'); ref_ranks = None
@@ -313,7 +313,7 @@ def get_prediction_logic(home_id, away_id, category='shots', filter_type='all', 
     return {"h":  h_s, "v":  v_s, "gen":  gen, "rm_h": rm_h, "ra_h": ra_h, "rm_v": rm_v, "ra_v": ra_v, "ref_rank": ref_val}
 
 def get_team_global_positions(team_id):
-    """Calcula rankings detallados (Posición, Total, PJ) en pares de ataque vs defensa."""
+    """Calcula rankings detallados (Posicion, Total, PJ) en pares de ataque vs defensa."""
     categories = [
         ('shots', 'all', 'Tiros', 'Tiros Recibidos'),
         ('shots', 'target', 'Tiros(arco)', 'Tiros(arco) Recibidos'),
@@ -341,7 +341,7 @@ def get_team_global_positions(team_id):
 
 def get_league_player_stats(rank_type='shots', filter_type='all',order_by='total', limit=100):
     conn = get_db_connection()
-    # Subconsulta para obtener el nombre del equipo más reciente del jugador
+    # Subconsulta para obtener el nombre del equipo mas reciente del jugador
     team_sub = "(SELECT CASE WHEN pmd2.team_id = m2.id_home_team THEN m2.home_team ELSE m2.away_team END FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
     pj = "SELECT player_id, COUNT(DISTINCT pmd.match_id) as pj, SUM(pmd.minutes_played) as minutes_played FROM player_match_details pmd WHERE pmd.minutes_played > 0 GROUP BY player_id"
     order_by = '(pj_table.minutes_played >= 300)' if order_by == 'avg' else 'total'
@@ -394,10 +394,10 @@ def get_league_player_stats(rank_type='shots', filter_type='all',order_by='total
 
 
 def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', order_by='total', match_limit=5):
-    """Calcula estadísticas de jugadores usando los últimos `match_limit` partidos de cada equipo.
+    """Calcula estadisticas de jugadores usando los ultimos `match_limit` partidos de cada equipo.
 
-    Para cada equipo, obtenemos sus últimos `match_limit` partidos finalizados y contamos
-    los eventos de los jugadores de ese equipo únicamente en esos partidos. Luego agregamos
+    Para cada equipo, obtenemos sus ultimos `match_limit` partidos finalizados y contamos
+    los eventos de los jugadores de ese equipo unicamente en esos partidos. Luego agregamos
     por jugador a nivel de liga para construir el top.
     """
     conn = get_db_connection()
@@ -408,7 +408,7 @@ def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', o
     player_totals = {}  # pid -> {id, name, t_id, total, pj, minutes_played}
 
     for tid in team_ids:
-        # últimos match_limit partidos del equipo
+        # ultimos match_limit partidos del equipo
         mrows = conn.execute('SELECT id FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?', (str(tid), str(tid), match_limit)).fetchall()
         match_ids = [r[0] for r in mrows]
         if not match_ids:
@@ -481,8 +481,8 @@ def index():
             if "Apertura" in tournament: tournament = "Liga Profesional Apertura"
             elif "Clausura" in tournament: tournament = "Liga Profesional Clausura"
         else: year = year or (years[0] if years else "2025"); tournament = tournament or "Liga Profesional Apertura"; gameweek = gameweek or "1"
-    matches_raw = conn.execute("SELECT * FROM matches WHERE strftime('%Y', date) = ? AND gameweek = ? AND tournament LIKE ? ORDER BY date DESC", (str(year), str(gameweek), f'%{tournament}%')).fetchall()
-    # Rankings rápidos para las tarjetas del index
+    matches_raw = conn.execute("SELECT * FROM matches WHERE strftime('%Y', date) = ? AND gameweek = ? AND tournament LIKE ? ORDER BY date ASC", (str(year), str(gameweek), f'%{tournament}%')).fetchall()
+    # Rankings rapidos para las tarjetas del index
     rs_m, rs_a = get_rankings_from_stats('shots')
     rh_m, rh_a = get_rankings_from_stats('headers')
     rc_m, rc_a = get_rankings_from_stats('cards')
@@ -527,7 +527,7 @@ def stats_page():
 
 @app.route('/match/<match_id>')
 def match_detail(match_id):
-    """Análisis profundo con pizarra y predicciones"""
+    """Analisis profundo con pizarra y predicciones"""
     conn = get_db_connection()
     match = conn.execute('SELECT * FROM matches WHERE id = ?', (str(match_id),)).fetchone()
     m_note = conn.execute('SELECT notes FROM match_notes WHERE match_id = ?', (str(match_id),)).fetchone()
@@ -559,7 +559,7 @@ def match_detail(match_id):
         for r in conn.execute('SELECT team_id, SUM(fouls_committed) as f FROM player_match_details WHERE match_id=? GROUP BY team_id', (str(match_id),)).fetchall():
             k = "home" if str(r['team_id']) == str(match['id_home_team']) else "away"; stats[k]["fouls"] = r['f'] or 0
     conn.close()
-    return render_template_string(DETAIL_HTML, match=match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, lineup_label="Formación" if match['finished'] else "Último 11", current_filter=sf)
+    return render_template_string(DETAIL_HTML, match=match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf)
 
 @app.route('/api/team_ranking/<team_id>')
 def api_team_ranking(team_id):
@@ -569,7 +569,7 @@ def api_team_ranking(team_id):
 
 @app.route('/api/team_stats')
 def api_team_stats():
-    """Devuelve estadísticas de equipos por categoría/side. Parámetros: category, filter, side (made|against), limit (opcional)."""
+    """Devuelve estadisticas de equipos por categoria/side. Parametros: category, filter, side (made|against), limit (opcional)."""
     category = request.args.get('category', 'shots')
     filter_type = request.args.get('filter', 'all')
     side = request.args.get('side', 'made')
@@ -581,8 +581,8 @@ def api_team_stats():
 
 @app.route('/api/player_stats')
 def api_player_stats():
-    """Devuelve estadísticas de jugadores. Parámetros: rank_type, filter, limit_matches (opcional).
-       Si se pasa `limit_matches`, calcula métricas usando solo los últimos N partidos por jugador.
+    """Devuelve estadisticas de jugadores. Parametros: rank_type, filter, limit_matches (opcional).
+       Si se pasa `limit_matches`, calcula metricas usando solo los ultimos N partidos por jugador.
     """
     rank_type = request.args.get('rank_type', 'shots')
     filter_type = request.args.get('filter', 'all')
@@ -598,7 +598,7 @@ def api_player_stats():
 def player_info(player_id, match_id):
     conn = get_db_connection()
     
-    # 1. Info básica
+    # 1. Info basica
     info = conn.execute('''
         SELECT pmd.*, m.home_team, m.away_team, m.id_home_team, m.id_away_team 
         FROM player_match_details pmd 
@@ -628,10 +628,10 @@ def player_info(player_id, match_id):
         ''', (player_id, player_id, player_id, player_id, player_id, player_id)).fetchone()
         return dict(s)
 
-    # Lógica de Rankings (Top 20)
+    # Logica de Rankings (Top 20)
     def get_top_rankings():
-        # Definimos los componentes de cada métrica
-        # Estructura: (Etiqueta, Tabla/Join, Función Agregada, Filtro extra)
+        # Definimos los componentes de cada metrica
+        # Estructura: (Etiqueta, Tabla/Join, Funcion Agregada, Filtro extra)
         metrics = [
             ("Tiros Totales", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", []),
             ("Tiros al Arco", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", ["s.on_target=1"]),
@@ -652,7 +652,7 @@ def player_info(player_id, match_id):
 
         for scope_name, scope_filter in scopes.items():
             for label, table_clause, agg_func, metric_filters in metrics:
-                # Construcción limpia de la cláusula WHERE
+                # Construccion limpia de la clausula WHERE
                 where_conditions = [scope_filter] + metric_filters
                 where_clause = " WHERE " + " AND ".join(where_conditions)
                 
@@ -728,7 +728,7 @@ def api_match_prediction(match_id):
 def search_players(team_id):
     q = request.args.get('q', '')
     conn = get_db_connection()
-    # Busca jugadores únicos por nombre que hayan jugado en ese equipo
+    # Busca jugadores unicos por nombre que hayan jugado en ese equipo
     players = conn.execute('''
         SELECT DISTINCT player_id, player_name, position 
         FROM player_match_details 
@@ -789,11 +789,11 @@ def referee_page(name):
         total_cards_acc += (c_h + c_v)
         total_fouls_acc += (f_h + f_v)
 
-    # 2. Rankings Globales de Árbitros
+    # 2. Rankings Globales de arbitros
     rc, rf = get_referee_rankings()
     ranks = {'cards': rc.get(name, "N/A"), 'fouls': rf.get(name, "N/A")}
 
-    # 3. Equipos más castigados (Top Targets)
+    # 3. Equipos mas castigados (Top Targets)
     # Mapping de IDs a Nombres para el arbitraje
     t_map = {str(r['id']): r['name'] for r in conn.execute('SELECT DISTINCT id_home_team as id, home_team as name FROM matches').fetchall()}
 
@@ -862,7 +862,7 @@ INDEX_HTML = '''
             <a href="/"><h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1></a>
             <nav class="flex gap-4">
                 <a href="/" class="bg-sky-600 px-6 py-2 rounded-xl text-xs font-black uppercase shadow-lg">Partidos</a>
-                <a href="/stats" class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">Estadísticas Liga</a>
+                <a href="/stats" class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">Estadisticas Liga</a>
             </nav>
         </header>
 
@@ -916,7 +916,7 @@ INDEX_HTML = '''
                             <span class="bg-sky-500/10 text-sky-400 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-sky-500/20">{{ m.tournament }}</span>
                             <span class="text-[14px] font-black text-slate-300 tracking-tighter">{{ m.date[:16] }}</span>
                             <div class="flex items-center gap-2">
-                                <span class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Árbitro:</span>
+                                <span class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">arbitro:</span>
                                 
                                 <div class="flex items-center gap-1.5">
                                     {% if m.referee %}
@@ -1021,7 +1021,7 @@ INDEX_HTML = '''
             let newTournament = currentTournament;
             let newYear = currentYear;
             
-            // Lógica para navegar hacia atrás (delta = -1)
+            // Logica para navegar hacia atras (delta = -1)
             if (delta === -1) {
                 if (newGameweek < 1) {
                     // Cambiar a torneo anterior
@@ -1035,7 +1035,7 @@ INDEX_HTML = '''
                     }
                 }
             }
-            // Lógica para navegar hacia adelante (delta = 1)
+            // Logica para navegar hacia adelante (delta = 1)
             else if (delta === 1) {
                 if (newGameweek > 20) {
                     // Cambiar a torneo siguiente
@@ -1100,7 +1100,7 @@ STATS_HTML = '''
 </body>
 ''' + FOOTER_HTML + '''
 <script>
-    // Función de color solicitada
+    // Funcion de color solicitada
     function getPosColorClass(v) { 
         if (v === 'N/A') return 'text-slate-500';
         const n = parseInt(v);
@@ -1110,7 +1110,7 @@ STATS_HTML = '''
     }
 
     const teamStatsData = [
-        { section: 'Análisis de Tiros', cols: 3, stats: [
+        { section: 'Analisis de Tiros', cols: 3, stats: [
             { title: 'Tiros Realizados', data: {{ s_m_all|tojson }}, api: {category: 'shots', filter: 'all', side: 'made'} },
             { title: 'Tiros al Arco', data: {{ s_m_tar|tojson }}, api: {category: 'shots', filter: 'target', side: 'made'} },
             { title: 'Tiros de Lejos', data: {{ s_m_lng|tojson }}, api: {category: 'shots', filter: 'long', side: 'made'} },
@@ -1126,9 +1126,9 @@ STATS_HTML = '''
             { title: 'Faltas Cometidas', data: {{ f_m|tojson }}, api: {category: 'fouls', filter: 'all', side: 'made'} },
             { title: 'Faltas Recibidas', data: {{ f_a|tojson }}, api: {category: 'fouls', filter: 'all', side: 'against'} }
         ]},
-        { section: 'Rankings de Árbitros', cols: 2, stats: [
-            { title: 'Árbitros: Cobradores (Faltas)', data: {{ ref_f|tojson }} },
-            { title: 'Árbitros: Tarjeteros (Tarjetas)', data: {{ ref_c|tojson }} }
+        { section: 'Rankings de arbitros', cols: 2, stats: [
+            { title: 'arbitros: Cobradores (Faltas)', data: {{ ref_f|tojson }} },
+            { title: 'arbitros: Tarjeteros (Tarjetas)', data: {{ ref_c|tojson }} }
         ]}
     ];
 
@@ -1138,7 +1138,7 @@ STATS_HTML = '''
             { title: 'Tiros al Arco', data: {{ p_shots_tar|tojson }}, api: {type: 'player', rank_type: 'shots', filter: 'target'} },
             { title: 'Tiros desde Lejos', data: {{ p_shots_lng|tojson }}, api: {type: 'player', rank_type: 'shots', filter: 'long'} }
         ]},
-        { section: 'Top Jugadores - Juego Físico', cols: 2, stats: [
+        { section: 'Top Jugadores - Juego Fisico', cols: 2, stats: [
             { title: 'Cabezazos', data: {{ p_headers|tojson }}, api: {type: 'player', rank_type: 'headers', filter: 'all'} },
             { title: 'Tarjetas', data: {{ p_cards|tojson }}, api: {type: 'player', rank_type: 'cards', filter: 'all'} },
             { title: 'Faltas Cometidas', data: {{ p_fouls|tojson }}, api: {type: 'player', rank_type: 'fouls', filter: 'all'} },
@@ -1155,7 +1155,7 @@ STATS_HTML = '''
     function switchMode(mode) {
         currentMode = mode;
         
-        // DESACTIVAR TODOS los botones de últimos 5 al cambiar de modo
+        // DESACTIVAR TODOS los botones de ultimos 5 al cambiar de modo
         if (window._statMap) {
             Object.keys(window._statMap).forEach(id => {
                 const stat = window._statMap[id];
@@ -1197,7 +1197,7 @@ STATS_HTML = '''
         });
     }
 
-    // Modificación en renderStatBox para mostrar el equipo del jugador
+    // Modificacion en renderStatBox para mostrar el equipo del jugador
     function renderStatBox(container, stat, id) 
     {
         const perPage = 10;
@@ -1261,7 +1261,7 @@ STATS_HTML = '''
         `;
     }
 
-    // Alterna el modo 'Últimos 5' para un box y recupera datos si es necesario
+    // Alterna el modo 'ultimos 5' para un box y recupera datos si es necesario
     function toggleStatLast5(id) {
         window._statLast5 = window._statLast5 || {};
         window._statLast5[id] = !window._statLast5[id];
@@ -1281,16 +1281,16 @@ STATS_HTML = '''
                         return r.json();
                     })
                     .then(data => {
-                        // limitar a 10 páginas de jugadores (10 por página -> 100 items)
+                        // limitar a 10 paginas de jugadores (10 por pagina -> 100 items)
                         const MAX_ITEMS = 10 * 10;
                         stat.data = Array.isArray(data) ? data.slice(0, MAX_ITEMS) : data;
-                        // reiniciamos la paginación para este box
+                        // reiniciamos la paginacion para este box
                         pages[id] = 1;
-                        // actualizar estado visual del botón
+                        // actualizar estado visual del boton
                         if (btn) { btn.classList.add('bg-sky-500'); btn.classList.remove('bg-slate-800'); btn.classList.add('text-white'); btn.classList.remove('text-slate-400'); }
                         renderStatBox(container, stat, id);
                     })
-                    .catch(e => { console.error('Error fetching player_stats', e); alert('Error cargando últimos 5 (ver consola)'); })
+                    .catch(e => { console.error('Error fetching player_stats', e); alert('Error cargando ultimos 5 (ver consola)'); })
                     .finally(() => { if (btn) { btn.disabled = false; } });
             } else {
                 const url = `/api/team_stats?category=${stat.api.category}&filter=${stat.api.filter}&side=${stat.api.side}&limit=5`;
@@ -1306,13 +1306,13 @@ STATS_HTML = '''
                         if (btn) { btn.classList.add('bg-sky-500'); btn.classList.remove('bg-slate-800'); btn.classList.add('text-white'); btn.classList.remove('text-slate-400'); }
                         renderStatBox(container, stat, id);
                     })
-                    .catch(e => { console.error('Error fetching team_stats', e); alert('Error cargando últimos 5 (ver consola)'); })
+                    .catch(e => { console.error('Error fetching team_stats', e); alert('Error cargando ultimos 5 (ver consola)'); })
                     .finally(() => { if (btn) { btn.disabled = false; } });
             }
             } else {
                 // restaurar datos originales
                 stat.data = stat._origData ? JSON.parse(JSON.stringify(stat._origData)) : stat.data;
-                // reiniciamos paginación al restaurar
+                // reiniciamos paginacion al restaurar
                 pages[id] = 1;
                 if (btn) { btn.classList.remove('bg-sky-500'); btn.classList.add('bg-slate-800'); btn.classList.remove('text-white'); btn.classList.add('text-slate-400'); }
                 renderStatBox(container, stat, id);
@@ -1343,7 +1343,7 @@ TEAM_HTML = '''
     .custom-scroll { scrollbar-width: thin; scrollbar-color: #334155 #1e293b; }
     .shooter-card { 
         background: rgba(15, 23, 42, 0.6); 
-        padding: 0.75rem 1rem; /* Un poco más de aire que en la pizarra */
+        padding: 0.75rem 1rem; /* Un poco mas de aire que en la pizarra */
         border-radius: 1rem; 
         border: 1px solid #1e293b; 
         transition: all 0.2s; 
@@ -1379,7 +1379,7 @@ TEAM_HTML = '''
 
             <!-- ULTIMOS PARTIDOS -->
             <div class="space-y-6">
-                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-slate-500 pl-4">Últimos Partidos</h2>
+                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-slate-500 pl-4">ultimos Partidos</h2>
                 <div class="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scroll">
                     {% for m in matches %}
                     <a href="/match/{{ m.id }}" class="block bg-slate-900/50 p-4 rounded-2xl border border-slate-800 hover:border-sky-500 transition-all">
@@ -1397,8 +1397,8 @@ TEAM_HTML = '''
                 </div>
             </div>
             <div class="space-y-6">
-                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-sky-500 pl-4">Posiciones en Estadísticas</h2>
-                {# Macro para definir el color de la posición basado en tu función #}
+                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-sky-500 pl-4">Posiciones en Estadisticas</h2>
+                {# Macro para definir el color de la posicion basado en tu funcion #}
                 {% macro get_pos_color(v) -%}
                     {% if v == 'N/A' %}text-slate-500
                     {% elif v|int > 20 %}text-red-500
@@ -1437,7 +1437,7 @@ TEAM_HTML = '''
             <!-- RANKING -->
             <div class="space-y-3">
                 <div class="flex justify-between items-center border-l-4 border-orange-500 pl-4">
-                    <h2 class="text-xl font-black uppercase italic tracking-tighter">Estadísticas Plantel</h2>
+                    <h2 class="text-xl font-black uppercase italic tracking-tighter">Estadisticas Plantel</h2>
                     <button onclick="toggleL5()" id="l5-btn" class="text-[9px] px-3 py-1 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
                 </div>
                 <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
@@ -1476,10 +1476,10 @@ TEAM_HTML = '''
         let isL5 = false;
         let teamPlayerData = []; 
         let playerPage = 1;
-        const playersPerPage = 10; // Cuántos mostrar por página
+        const playersPerPage = 10; // Cuantos mostrar por pagina
         const teamId = "{{ team_id }}";
 
-        // 1. Alternar últimos 5 partidos
+        // 1. Alternar ultimos 5 partidos
         function toggleL5() {
             isL5 = !isL5;
             const btn = document.getElementById('l5-btn');
@@ -1488,7 +1488,7 @@ TEAM_HTML = '''
             updateTeamRanking(teamId, currentType); // Recargar
         }
 
-        // 2. Función única para dibujar la lista
+        // 2. Funcion unica para dibujar la lista
         function renderPlayerPage() {
             const list = document.getElementById('player-ranking-list');
             const info = document.getElementById('player-page-info');
@@ -1516,7 +1516,7 @@ TEAM_HTML = '''
             `).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-10">Sin datos.</p>';
         }
 
-        // 3. Cambiar de página
+        // 3. Cambiar de pagina
         function changePage(delta) {
             const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
             let next = playerPage + delta;
@@ -1567,7 +1567,7 @@ REFEREE_HTML = '''
     <meta name="author" content="MartinezGalo & francoqdev">
     <meta name="copyright" content="ARG STATS">
 
-    <title>Árbitro: {{ ref_name }} - ARG STATS</title>
+    <title>arbitro: {{ ref_name }} - ARG STATS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body{background-color:#0f172a;color:#f8fafc;}
@@ -1629,11 +1629,11 @@ REFEREE_HTML = '''
             </div>
 
             <div class="lg:col-span-2 space-y-8">
-                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-red-500 pl-4">Análisis de Tendencias por Equipo</h2>
+                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-red-500 pl-4">Analisis de Tendencias por Equipo</h2>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-slate-800/30 p-6 rounded-[2rem] border border-slate-700/50">
-                        <h3 class="text-sm font-black text-yellow-500 uppercase mb-4 tracking-widest">Equipos con más Tarjetas</h3>
+                        <h3 class="text-sm font-black text-yellow-500 uppercase mb-4 tracking-widest">Equipos con mas Tarjetas</h3>
                         <div class="space-y-2">
                             {% for t in top_targets.cards %}
                             <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800">
@@ -1645,7 +1645,7 @@ REFEREE_HTML = '''
                     </div>
 
                     <div class="bg-slate-800/30 p-6 rounded-[2rem] border border-slate-700/50">
-                        <h3 class="text-sm font-black text-red-500 uppercase mb-4 tracking-widest">Más Faltas Cometidas (En contra)</h3>
+                        <h3 class="text-sm font-black text-red-500 uppercase mb-4 tracking-widest">Mas Faltas Cometidas (En contra)</h3>
                         <div class="space-y-2">
                             {% for t in top_targets.fouls_committed %}
                             <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800">
@@ -1657,7 +1657,7 @@ REFEREE_HTML = '''
                     </div>
 
                     <div class="bg-slate-800/30 p-6 rounded-[2rem] border border-slate-700/50">
-                        <h3 class="text-sm font-black text-emerald-500 uppercase mb-4 tracking-widest">Más Faltas Recibidas (A favor)</h3>
+                        <h3 class="text-sm font-black text-emerald-500 uppercase mb-4 tracking-widest">Mas Faltas Recibidas (A favor)</h3>
                         <div class="space-y-2">
                             {% for t in top_targets.fouls_received %}
                             <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800">
@@ -1743,7 +1743,7 @@ DETAIL_HTML = '''
             min-height: 0 !important; /* Vital para que los hijos puedan scrollear */
             overflow: hidden; 
         }
-        /* Asegura que el contenido interno de la modal respete el límite de 750px */
+        /* Asegura que el contenido interno de la modal respete el limite de 750px */
         #modal-content {
             height: 100%;
             display: flex;
@@ -1754,7 +1754,7 @@ DETAIL_HTML = '''
         /* Forzamos que las notas no se muevan nunca */
         .notes-section {
             height: 160px; /* Altura fija para notas */
-            flex-shrink: 0; /* Prohíbe que se encoja */
+            flex-shrink: 0; /* Prohibe que se encoja */
         }
 
         /* Ajuste para las tarjetas de ranking */
@@ -1775,7 +1775,7 @@ DETAIL_HTML = '''
         .custom-blue-scroll::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
 
         .shooter-card { background: rgba(15, 23, 42, 0.6); padding: 0.25rem 0.5rem; border-radius: 0.5rem; border: 1px solid #1e293b; transition: all 0.2s; cursor: pointer; }
-        .sub-menu { display: none; margin-top: 8px; animation: slideDown 0.2s ease-out; }
+        .sub-menu { display: none; animation: slideDown 0.2s ease-out; }
         #home-ranking-list, #away-ranking-list { height: 350px; min-height: 350px; overflow: hidden; display: flex; flex-direction: column; }
     </style>
 </head>
@@ -1784,7 +1784,7 @@ DETAIL_HTML = '''
     
     <div id="subst-modal-overlay" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-[4000] flex items-center justify-center" onclick="if(event.target==this) closeSubstModal()">
         <div class="bg-slate-900 border border-slate-700 w-full max-w-md p-8 rounded-[2rem] shadow-2xl">
-            <h3 class="text-xl font-black uppercase text-white mb-4 italic tracking-tighter">Sustitución Táctica</h3>
+            <h3 class="text-xl font-black uppercase text-white mb-4 italic tracking-tighter">Sustitucion Tactica</h3>
             <input type="text" id="subst-search" autocomplete="off" oninput="searchPlayers(this.value)" placeholder="Ingresa nombre o ID..." class="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl outline-none focus:border-sky-500 text-white text-sm mb-4">
             <div id="subst-results" class="space-y-2 max-h-60 overflow-y-auto"></div>
         </div>
@@ -1812,16 +1812,16 @@ DETAIL_HTML = '''
                         <a href="/team/{{ match.id_away_team }}">{{ match.away_team }}</a>
                     </h1>
                 </div>
-                <div class="border-t border-slate-800 pt-4 mt-2"><span class="text-[12px] font-bold text-slate-300 uppercase tracking-widest italic">Árbitro: {%if match.referee %} <a href="/referee/{{ match.referee }}" class="hover:text-sky-500">{{ match.referee}}</a> {% else %} Por designar {% endif %}</span></div>
+                <div class="border-t border-slate-800 pt-4 mt-2"><span class="text-[12px] font-bold text-slate-300 uppercase tracking-widest italic">arbitro: {%if match.referee %} <a href="/referee/{{ match.referee }}" class="hover:text-sky-500">{{ match.referee}}</a> {% else %} Por designar {% endif %}</span></div>
             </div>
             <!-- NOTAS -->
             <div class="ml-4 mx-auto w-[35%]">
                 <form action="/save_match_note/{{ match.id }}" method="POST" class="bg-slate-900/40 p-6 rounded-[2.5rem] border border-slate-800/50 backdrop-blur-sm">
                     <div class="flex justify-between items-center mb-3 px-2">
-                        <label class="text-[10px] font-black text-sky-500 uppercase tracking-[0.2em]">Notas Tácticas del Encuentro</label>
+                        <label class="text-[10px] font-black text-sky-500 uppercase tracking-[0.2em]">Notas Tacticas del Encuentro</label>
                         <button type="submit" class="text-[9px] bg-sky-600/20 hover:bg-sky-600 text-sky-400 hover:text-white px-4 py-1 rounded-full font-black uppercase transition-all border border-sky-500/30">Actualizar Nota</button>
                     </div>
-                    <textarea name="notes" placeholder="Escribe aquí el análisis post-partido o instrucciones previas..." 
+                    <textarea name="notes" placeholder="Escribe aqui el analisis post-partido o instrucciones previas..." 
                         class="w-full bg-slate-950/50 border border-slate-800 rounded-2xl p-4 text-sm text-slate-300 outline-none focus:border-sky-500 h-28 resize-none shadow-inner transition-all">{{ m_note.notes if m_note else '' }}</textarea>
                 </form>
             </div>
@@ -1846,18 +1846,18 @@ DETAIL_HTML = '''
                 <!-- RANKING LOCAL -->
                 <div class="space-y-3">
                     <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
-                        <div class="flex justify-between items-center w-full mb-2">
-                            <h4 class="text-[14px] font-black text-sky-400 uppercase italic tracking-widest">Rankings Local</h4>
+                        <h4 class="text-[14px] font-black text-sky-400 uppercase italic tracking-widest mb-2">Rankings Local</h4>
+                        <div class="flex w-full justify-between mb-3">
                             <button onclick="toggleL5('home', '{{ match.id_home_team }}')" id="h-l5-btn" class="text-[9px] px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
                         </div>
                         <div class="flex flex-wrap justify-center gap-1 mb-2">
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold h-rank-btn" id="h-btn-main">Tiros</button>
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'headers', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Cabezazos</button>
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'yellows', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Tarj.</button>
+                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'yellows', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Tarjetas</button>
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Faltas</button>
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Faltas Rec.</button>
                         </div>
-                        <div id="home-sub-filters" class="sub-menu flex gap-1 justify-center mt-2" style="display:none;">
+                        <div id="home-sub-filters" class="sub-menu flex gap-1 justify-center" style="display:none;">
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)" id="home-sub-all" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-black h-sub-btn">Todos</button>
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'target', event)" id="home-sub-target" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black h-sub-btn">Arco</button>
                             <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'long', event)" id="home-sub-long" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black h-sub-btn">Lejos</button>
@@ -1873,6 +1873,7 @@ DETAIL_HTML = '''
             </div>
             <!-- PITCH -->
             <div class="md:col-span-2 relative flex flex-col items-center">
+                <h2 class="text-[15px] font-black text-slate-300 uppercase italic mb-4 text-center tracking-widest border-b border-slate-500/20 pb-2">{{ lineup_label }}</h2>
                 <div class="pitch" id="soccer-pitch">
                     {% for p in home_lineup %}<div class="player-dot bg-blue-500 draggable shadow-lg" style="bottom:{{ (p.role_x * 50) }}%; left:{{(1-p.role_y)*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="home" data-teamid="{{match.id_home_team}}" onclick="handlePlayerClick(event)">{{p.position}}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name.split(' ').pop()}}</div></div>{% endfor %}
                     {% for p in away_lineup %}<div class="player-dot bg-red-500 draggable shadow-lg" style="top:{{ (p.role_x * 50) }}%; left:{{p.role_y*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="away" data-teamid="{{match.id_away_team}}" onclick="handlePlayerClick(event)">{{p.position}}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name.split(' ').pop()}}</div></div>{% endfor %}
@@ -1902,8 +1903,8 @@ DETAIL_HTML = '''
                 <!-- RANKING VISITA -->
                 <div class="space-y-3">
                     <div class="flex flex-col items-center border-b border-red-500/20 pb-2 mb-3">
-                        <div class="flex justify-between items-center w-full mb-2 flex-row-reverse">
-                            <h4 class="text-[14px] font-black text-red-500 uppercase italic tracking-widest">Rankings Visita</h4>
+                        <h4 class="text-[14px] font-black text-red-500 uppercase italic tracking-widest mb-3">Rankings Visita</h4>
+                        <div class="flex w-full justify-between mb-3">
                             <button onclick="toggleL5('away', '{{ match.id_away_team }}')" id="v-l5-btn" class="text-[9px] px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
                         </div>
                         <div class="flex flex-wrap justify-center gap-1 mb-2">
@@ -1913,7 +1914,7 @@ DETAIL_HTML = '''
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Faltas</button>
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Faltas Rec.</button>
                         </div>
-                        <div id="away-sub-filters" class="sub-menu flex gap-1 justify-center mt-2">
+                        <div id="away-sub-filters" class="sub-menu flex gap-1 justify-center">
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)" id="away-sub-all" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-black v-sub-btn">Todos</button>
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'target', event)" id="away-sub-target" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black v-sub-btn">Arco</button>
                             <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'long', event)" id="away-sub-long" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black v-sub-btn">Lejos</button>
@@ -1981,7 +1982,7 @@ DETAIL_HTML = '''
                         </div>
                         {% if data.ref_rank %}
                         <div class="bg-slate-900 p-2 rounded-lg border border-sky-900/20 text-center">
-                            <span class="text-[11px] text-sky-500 font-black uppercase italic" id="rank-{{cat}}-refrank">Árbitro <span class="{{ get_pos_color(data.ref_rank) }}">#{{data.ref_rank}}</span> en {{'Tarjetas' if cat=='cards' else 'Faltas'}}</span>
+                            <span class="text-[11px] text-sky-500 font-black uppercase italic" id="rank-{{cat}}-refrank">arbitro <span class="{{ get_pos_color(data.ref_rank) }}">#{{data.ref_rank}}</span> en {{'Tarjetas' if cat=='cards' else 'Faltas'}}</span>
                         </div>
                         {% endif %}
                     </div>
@@ -2153,7 +2154,7 @@ DETAIL_HTML = '''
                                 <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
                                     <button onclick="renderRankScope('liga')" id="rank-scope-liga" class="px-4 py-1 text-[10px] font-black uppercase rounded-lg bg-sky-600 text-white transition-all">Liga</button>
                                     <button onclick="renderRankScope('equipo')" id="rank-scope-equipo" class="px-4 py-1 text-[10px] font-black uppercase rounded-lg text-slate-500 transition-all">Equipo</button>
-                                    <button onclick="renderRankScope('posicion')" id="rank-scope-posicion" class="px-4 py-1 text-[10px] font-black uppercase rounded-lg text-slate-500 transition-all">Posición</button>
+                                    <button onclick="renderRankScope('posicion')" id="rank-scope-posicion" class="px-4 py-1 text-[10px] font-black uppercase rounded-lg text-slate-500 transition-all">Posicion</button>
                                 </div>
                             </div>
                             
@@ -2187,7 +2188,7 @@ DETAIL_HTML = '''
             });
 
             if (data.length === 0) {
-                container.innerHTML = `<div class="col-span-2 text-center py-10 text-slate-600 italic text-sm">El jugador no figura en el Top 20 de ninguna estadística en este ámbito.</div>`;
+                container.innerHTML = `<div class="col-span-2 text-center py-10 text-slate-600 italic text-sm">El jugador no figura en el Top 20 de ninguna estadistica en este ambito.</div>`;
                 return;
             }
 
@@ -2249,7 +2250,7 @@ DETAIL_HTML = '''
         function applySubstitution(pid, name, pos) { 
             substituteTarget.dataset.pid = pid; 
             substituteTarget.dataset.pname = name; 
-            // Actualiza el texto de la posición y el nombre visual
+            // Actualiza el texto de la posicion y el nombre visual
             substituteTarget.childNodes[0].nodeValue = pos; 
             substituteTarget.querySelector('.player-name').innerText = name.split(' ').pop(); 
             closeSubstModal(); 
@@ -2298,10 +2299,10 @@ if __name__ == '__main__':
     is_render = os.environ.get("RENDER", False)
     
     if is_render:
-        # Configuración para Render
+        # Configuracion para Render
         port = int(os.environ.get("PORT", 5000))
         app.run(host='0.0.0.0', port=port)
     else:
-        # Configuración para LOCAL
+        # Configuracion para LOCAL
         print("--- CORRIENDO EN MODO LOCAL ---")
         app.run(host='127.0.0.1', port=5001, debug=True)

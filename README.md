@@ -6,9 +6,9 @@ La aplicación integra un **motor predictivo**, una **pizarra táctica interacti
 
 ---
 
-## 🧠 ¿Qué hace diferente a ARG STATS?
+## 🧠 ¿Qué hace ARG STATS?
 
-- Procesa **datos históricos reales** (partidos, eventos y actas) en SQLite optimizado.
+- Procesa **datos históricos reales** en una base de datos optimizada.
 - Evita métricas infladas usando **suelo de minutos** y normalización **p90**.
 - Cruza **ataque + defensa + árbitro** para generar predicciones probabilísticas.
 - Unifica **scouting visual (pizarra)** con **analítica cuantitativa**.
@@ -53,13 +53,9 @@ El despliegue se realiza en Render y puede tardar unos segundos en iniciar si la
   - Todas las métricas de jugadores se ajustan por minutos jugados.
 
 - **Filtro de Ultimos 5 Partidos**
-  - Rankings basados solo en los últimos N partidos por equipo.
+  - Rankings basados solo en los últimos 5 partidos por equipo.
   - Detección de rachas, picos de forma y caídas de rendimiento.
 
-- **Ordenación Inteligente**
-  - Algoritmo de suelo de minutos:
-    - >300 min (liga)
-    - >150 min (last‑matches)
 
 ---
 
@@ -142,10 +138,6 @@ Esto permite:
 
 - **Window‑like Logic**
   - Última camiseta, posición y equipo vía subconsultas ordenadas por fecha.
-
-- **Integridad Estadística**
-  - Partidos jugados (PJ) calculados desde actas reales.
-  - No se infieren PJ desde eventos.
 
 - **Escalabilidad Lógica**
   - API preparada para separar frontend / backend.

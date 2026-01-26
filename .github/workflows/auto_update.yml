@@ -1,5 +1,4 @@
 name: Actualización de Base de Datos
-
 on:
   schedule:
     # 13:00 UTC es 10:00 AM Argentina (UTC-3)
@@ -14,20 +13,23 @@ jobs:
       
     steps:
       - name: Descargar Repositorio
-        uses: actions/checkout@v3
-
+        uses: actions/checkout@v4 
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          
       - name: Configurar Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
+          
       - name: Instalar Librerías
         run: |
           pip install requests pandas cloudscraper
-
+          
       - name: Ejecutar Actualización
         run: python api.py
-
+        
       - name: Guardar Cambios en GitHub
         id: commit_step
         run: |
@@ -39,14 +41,12 @@ jobs:
             echo "changes=false" >> $GITHUB_OUTPUT
             echo "No hay cambios para subir."
           else
-            git commit -m "Auto-update: DB y Logs $(date +'%Y-%m-%d')"
-            git push
+            git commit -m "Auto-update: DB y Logs $(date +'%Y-%m-%d %H:%M:%S')"
+            git push origin main  # Especifica la rama explícitamente
             echo "changes=true" >> $GITHUB_OUTPUT
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Disparar Deploy en Render
         if: steps.commit_step.outputs.changes == 'true'
         run: |
-          curl -s ${{ secrets.RENDER_DEPLOY_HOOK }} > /dev/null
+          curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}

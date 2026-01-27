@@ -75,6 +75,38 @@ def get_referee_detailed_tops():
     return [{"name": r['name'], "total": r['total'], "pj": r['pj'], "avg": round(r['avg'], 2)} for r in ref_c_q], \
            [{"name": r['name'], "total": r['total'], "pj": r['pj'], "avg": round(r['avg'], 2)} for r in ref_f_q]
 
+def get_referee_stats_logic(category='cards', order_by='total', limit=None):
+    conn = get_db_connection()
+    if limit:
+        refs = [r[0] for r in conn.execute('SELECT DISTINCT referee FROM matches WHERE finished=1 AND referee IS NOT NULL').fetchall()]
+        results = []
+        for ref in refs:
+             matches = conn.execute('SELECT id FROM matches WHERE referee = ? AND finished = 1 ORDER BY date DESC LIMIT ?', (ref, limit)).fetchall()
+             match_ids = [str(m[0]) for m in matches]
+             pj = len(match_ids)
+             if pj == 0: continue
+             ids_str = ",".join([f"'{m}'" for m in match_ids])
+             if category == 'cards':
+                 q = f"SELECT COUNT(*) FROM cards WHERE match_id IN ({ids_str})"
+             else:
+                 q = f"SELECT SUM(fouls_committed) FROM player_match_details WHERE match_id IN ({ids_str})"
+             total = conn.execute(q).fetchone()[0] or 0
+             avg = round(total / pj, 2)
+             results.append({"name": ref, "total": total, "pj": pj, "avg": avg})
+        conn.close()
+        key = 'total' if order_by == 'total' else 'avg'
+        results.sort(key=lambda x: x[key], reverse=True)
+        return results
+    else:
+        sort_col = "total" if order_by == 'total' else "avg"
+        if category == 'cards':
+            q = f'''SELECT m.referee as name, COUNT(c.card_id) as total, COUNT(DISTINCT m.id) as pj, CAST(COUNT(c.card_id) AS FLOAT) / COUNT(DISTINCT m.id) as avg FROM matches m LEFT JOIN cards c ON m.id = c.match_id WHERE m.finished = 1 AND m.referee IS NOT NULL GROUP BY m.referee ORDER BY {sort_col} DESC'''
+        else:
+            q = f'''SELECT m.referee as name, SUM(pmd.fouls_committed) as total, COUNT(DISTINCT m.id) as pj, CAST(SUM(pmd.fouls_committed) AS FLOAT) / COUNT(DISTINCT m.id) as avg FROM matches m LEFT JOIN player_match_details pmd ON m.id = pmd.match_id WHERE m.finished = 1 AND m.referee IS NOT NULL GROUP BY m.referee ORDER BY {sort_col} DESC'''
+        res = conn.execute(q).fetchall()
+        conn.close()
+        return [{"name": r['name'], "total": int(r['total'] or 0), "pj": r['pj'], "avg": round(r['avg'] or 0, 2)} for r in res]
+
 def get_last_finished_match_id(team_id):
     """Busca el ID del partido finalizado mas reciente de un equipo para extraer su tactica actual."""
     conn = get_db_connection()
@@ -615,7 +647,8 @@ def api_team_stats():
     filter_type = request.args.get('filter', 'all')
     side = request.args.get('side', 'made')
     limit = request.args.get('limit', type=int)
-    made, against = get_team_stats_core(category, filter_type, order_by='total', limit=limit)
+    order_by = request.args.get('order_by', 'total')
+    made, against = get_team_stats_core(category, filter_type, order_by=order_by, limit=limit)
     data = made if side == 'made' else against
     return jsonify(data)
 
@@ -628,12 +661,20 @@ def api_player_stats():
     rank_type = request.args.get('rank_type', 'shots')
     filter_type = request.args.get('filter', 'all')
     limit_matches = request.args.get('limit_matches', type=int)
+    order_by = request.args.get('order_by', 'total')
     if limit_matches:
-        data = get_league_player_stats_last_matches(rank_type, filter_type, match_limit=limit_matches)
+        data = get_league_player_stats_last_matches(rank_type, filter_type, order_by=order_by, match_limit=limit_matches)
     else:
         limit = request.args.get('limit', type=int) or 100
-        data = get_league_player_stats(rank_type, filter_type, limit=limit)
+        data = get_league_player_stats(rank_type, filter_type, order_by=order_by, limit=limit)
     return jsonify(data)
+
+@app.route('/api/referee_stats')
+def api_referee_stats():
+    category = request.args.get('category', 'cards')
+    limit = request.args.get('limit', type=int)
+    order_by = request.args.get('order_by', 'total')
+    return jsonify(get_referee_stats_logic(category, order_by, limit))
 
 @app.route('/player_info/<player_id>/<match_id>')
 def player_info(player_id, match_id):
@@ -1155,8 +1196,8 @@ STATS_HTML = '''
             { title: 'Faltas Recibidas', data: {{ f_a|tojson }}, api: {category: 'fouls', filter: 'all', side: 'against'} }
         ]},
         { section: 'Rankings de arbitros', cols: 2, stats: [
-            { title: 'arbitros: Cobradores (Faltas)', data: {{ ref_f|tojson }} },
-            { title: 'arbitros: Tarjeteros (Tarjetas)', data: {{ ref_c|tojson }} }
+            { title: 'arbitros: Cobradores (Faltas)', data: {{ ref_f|tojson }}, api: {type: 'referee', category: 'fouls'} },
+            { title: 'arbitros: Tarjeteros (Tarjetas)', data: {{ ref_c|tojson }}, api: {type: 'referee', category: 'cards'} }
         ]}
     ];
 
@@ -1178,6 +1219,7 @@ STATS_HTML = '''
     let pages = {};
 
     window._statLast5 = {};
+    window._statSort = {};
     window._statMap = {};
 
     function switchMode(mode) {
@@ -1192,6 +1234,7 @@ STATS_HTML = '''
             });
         }
         window._statLast5 = {}; // Limpia el estado de botones activos
+        window._statSort = {}; // Reset sorting
 
         document.getElementById('btn-teams').className = mode === 'teams' ? 'px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg' : 'px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white';
         document.getElementById('btn-players').className = mode === 'players' ? 'px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg' : 'px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white';
@@ -1240,12 +1283,18 @@ STATS_HTML = '''
         window._statMap[id]._origData = window._statMap[id]._origData || JSON.parse(JSON.stringify(stat.data));
         window._statLast5 = window._statLast5 || {};
         const last5Active = !!window._statLast5[id];
+        const sort = (window._statSort && window._statSort[id]) || 'total';
 
         container.innerHTML = `
             <div class="bg-slate-800/40 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col h-full overflow-hidden">
-                <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700/50 flex justify-between items-center">
-                    <h3 class="font-black text-sky-400 uppercase text-[13px] tracking-widest">${stat.title}</h3>
-                    ${stat.api ? `<button id="l5-btn-${id}" onclick='toggleStatLast5("${id}")' class="text-[10px] font-black uppercase px-3 py-1 rounded-full border ${last5Active ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400'}">Ultimos 5 Partidos</button>` : ''}
+                <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700/50 flex justify-between items-center gap-2">
+                    <h3 class="font-black text-sky-400 uppercase text-[13px] tracking-widest flex-1">${stat.title}</h3>
+                    ${stat.api ? `
+                        <button id="sort-btn-${id}" onclick='toggleSort("${id}")' class="text-[10px] font-black uppercase px-3 py-1 rounded-full border ${sort === 'avg' ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400'}">
+                           ${sort === 'avg' ? 'Prom' : 'Total'}
+                        </button>
+                        <button id="l5-btn-${id}" onclick='toggleStatLast5("${id}")' class="text-[10px] font-black uppercase px-3 py-1 rounded-full border ${last5Active ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400'}">Ultimos 5</button>
+                    ` : ''}
                 </div>
 
                 <div class="p-4 flex-1 space-y-2">
@@ -1289,62 +1338,67 @@ STATS_HTML = '''
         `;
     }
 
-    // Alterna el modo 'ultimos 5' para un box y recupera datos si es necesario
+    function toggleSort(id) {
+        window._statSort = window._statSort || {};
+        window._statSort[id] = (window._statSort[id] === 'avg' ? 'total' : 'avg');
+        fetchDataForBox(id);
+    }
+
     function toggleStatLast5(id) {
         window._statLast5 = window._statLast5 || {};
         window._statLast5[id] = !window._statLast5[id];
+        fetchDataForBox(id);
+    }
+
+    function fetchDataForBox(id) {
         const container = document.getElementById(id);
-        const stat = (window._statMap && window._statMap[id]) || null;
-        if (!stat) return;
-        const btn = document.getElementById(`l5-btn-${id}`);
-        if (window._statLast5[id]) {
-            // fetchar datos con limit=5 (equipos) o limit_matches=5 (jugadores)
-            if (stat.api && stat.api.type === 'player') {
-                const url = `/api/player_stats?rank_type=${stat.api.rank_type}&filter=${stat.api.filter}&limit_matches=5`;
-                if (btn) { btn.disabled = true; }
-                console.log('Fetching player stats last5 ->', url, stat);
-                fetch(url)
-                    .then(r => {
-                        if (!r.ok) throw new Error('HTTP ' + r.status);
-                        return r.json();
-                    })
-                    .then(data => {
-                        // limitar a 10 paginas de jugadores (10 por pagina -> 100 items)
-                        const MAX_ITEMS = 10 * 10;
-                        stat.data = Array.isArray(data) ? data.slice(0, MAX_ITEMS) : data;
-                        // reiniciamos la paginacion para este box
-                        pages[id] = 1;
-                        // actualizar estado visual del boton
-                        if (btn) { btn.classList.add('bg-sky-500'); btn.classList.remove('bg-slate-800'); btn.classList.add('text-white'); btn.classList.remove('text-slate-400'); }
-                        renderStatBox(container, stat, id);
-                    })
-                    .catch(e => { console.error('Error fetching player_stats', e); alert('Error cargando ultimos 5 (ver consola)'); })
-                    .finally(() => { if (btn) { btn.disabled = false; } });
-            } else {
-                const url = `/api/team_stats?category=${stat.api.category}&filter=${stat.api.filter}&side=${stat.api.side}&limit=5`;
-                if (btn) { btn.disabled = true; }
-                console.log('Fetching team stats last5 ->', url, stat);
-                fetch(url)
-                    .then(r => {
-                        if (!r.ok) throw new Error('HTTP ' + r.status);
-                        return r.json();
-                    })
-                    .then(data => {
-                        stat.data = data;
-                        if (btn) { btn.classList.add('bg-sky-500'); btn.classList.remove('bg-slate-800'); btn.classList.add('text-white'); btn.classList.remove('text-slate-400'); }
-                        renderStatBox(container, stat, id);
-                    })
-                    .catch(e => { console.error('Error fetching team_stats', e); alert('Error cargando ultimos 5 (ver consola)'); })
-                    .finally(() => { if (btn) { btn.disabled = false; } });
-            }
-            } else {
-                // restaurar datos originales
-                stat.data = stat._origData ? JSON.parse(JSON.stringify(stat._origData)) : stat.data;
-                // reiniciamos paginacion al restaurar
+        const stat = window._statMap[id];
+        if (!stat || !stat.api) return;
+        
+        const btnL5 = document.getElementById(`l5-btn-${id}`);
+        const btnSort = document.getElementById(`sort-btn-${id}`);
+        const isL5 = window._statLast5 && window._statLast5[id];
+        const sort = (window._statSort && window._statSort[id]) || 'total';
+        
+        // Optimisation: if asking for default view (no L5, sort total), use cached _origData
+        if (!isL5 && sort === 'total' && stat._origData) {
+            stat.data = JSON.parse(JSON.stringify(stat._origData));
+            pages[id] = 1;
+            renderStatBox(container, stat, id);
+            return;
+        }
+
+        if(btnL5) btnL5.disabled = true;
+        if(btnSort) btnSort.disabled = true;
+        
+        let url = '';
+        if (stat.api.type === 'player') {
+            url = `/api/player_stats?rank_type=${stat.api.rank_type}&filter=${stat.api.filter}&order_by=${sort}`;
+            if(isL5) url += `&limit_matches=5`;
+        } else if (stat.api.type === 'referee') {
+            url = `/api/referee_stats?category=${stat.api.category}&order_by=${sort}`;
+            if(isL5) url += `&limit=5`;
+        } else {
+            url = `/api/team_stats?category=${stat.api.category}&filter=${stat.api.filter}&side=${stat.api.side}&order_by=${sort}`;
+            if(isL5) url += `&limit=5`;
+        }
+        
+        fetch(url)
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                const MAX_ITEMS = 100;
+                stat.data = Array.isArray(data) ? data.slice(0, MAX_ITEMS) : data;
                 pages[id] = 1;
-                if (btn) { btn.classList.remove('bg-sky-500'); btn.classList.add('bg-slate-800'); btn.classList.remove('text-white'); btn.classList.add('text-slate-400'); }
                 renderStatBox(container, stat, id);
-            }
+            })
+            .catch(e => { console.error('Error fetching stats', e); alert('Error cargando stats (ver consola)'); })
+            .finally(() => { 
+                if(btnL5) btnL5.disabled = false; 
+                if(btnSort) btnSort.disabled = false;
+            });
     }
 
     function changeLocalPage(id, delta) {
@@ -1356,7 +1410,7 @@ STATS_HTML = '''
         renderStatBox(container, stat, id);
     }
 
-    renderAll();
+    document.addEventListener('DOMContentLoaded', renderAll);
     </script>
     <div class="max-w-[1500px] mx-auto">
         <header class="flex flex-row justify-between items-center mb-16 gap-4">
@@ -1895,10 +1949,13 @@ DETAIL_HTML = '''
 <body class="p-6">
 
         <script>
-        const pitch = document.getElementById('soccer-pitch');
-        const draggables = document.querySelectorAll('.draggable');
-        const contextMenu = document.getElementById('context-menu');
-        const selectionBox = document.getElementById('selection-box');
+        let pitch, draggables, contextMenu, selectionBox;
+        document.addEventListener('DOMContentLoaded', () => {
+            pitch = document.getElementById('soccer-pitch');
+            draggables = document.querySelectorAll('.draggable');
+            contextMenu = document.getElementById('context-menu');
+            selectionBox = document.getElementById('selection-box');
+        });
         let activePlayer = null, lastCtxPid = null, selectedPlayers = [], currentPlayerShots = [];
         let isLassoing = false, startX, startY, pitchIsReversed = false;
         const rankingsData = { home: [], away: [] }, currentPages = { home: 1, away: 1 }, perPage = 10;
@@ -2221,20 +2278,26 @@ DETAIL_HTML = '''
         document.addEventListener('click', e => { if (!e.target.closest('#context-menu')) contextMenu.style.display = 'none'; });
         function handleCtxAction(act) { if(act === 'profile') openPlayer(lastCtxPid); else if(act === 'replace') document.getElementById('subst-modal-overlay').classList.remove('hidden'); else if(act === 'key') substituteTarget.classList.toggle('key-player'); contextMenu.style.display = 'none'; }
         window.onload = () => { updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores'); updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores'); };
-        document.addEventListener('mousedown', e => {
+        function handleStart(e) {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
             const p = e.target.closest('.draggable'), isPitch = e.target.closest('#soccer-pitch');
-            if(!p && isPitch && !e.target.closest('#context-menu')) { selectedPlayers.forEach(x=>x.classList.remove('selected-player')); selectedPlayers=[]; isLassoing=true; startX=e.clientX; startY=e.clientY; selectionBox.style.display='none'; draggables.forEach(x=>x._rect=x.getBoundingClientRect()); }
+            if(!p && isPitch && !e.target.closest('#context-menu')) { selectedPlayers.forEach(x=>x.classList.remove('selected-player')); selectedPlayers=[]; isLassoing=true; startX=clientX; startY=clientY; selectionBox.style.display='none'; draggables.forEach(x=>x._rect=x.getBoundingClientRect()); }
             else if(p) {
                 if ((p.dataset.side === 'home' && locks.home) || (p.dataset.side === 'away' && locks.away)) return;
+                if(!e.touches) e.preventDefault();
                 activePlayer=p; activePlayer.dragging = false;
                 if(!selectedPlayers.includes(p)) { selectedPlayers.forEach(x=>x.classList.remove('selected-player')); p.classList.add('selected-player'); selectedPlayers=[p]; }
                 selectedPlayers.forEach(x=>{ x.style.transition='none'; x.startL=parseFloat(x.style.left); x.startB=(x.style.bottom&&x.style.bottom!=='auto')?parseFloat(x.style.bottom):null; x.startT=x.startB===null?parseFloat(x.style.top):null; });
-                activePlayer.mX=e.clientX; activePlayer.mY=e.clientY;
+                activePlayer.mX=clientX; activePlayer.mY=clientY;
             }
-        });
-        document.addEventListener('mousemove', e => {
+        }
+        function handleMove(e) {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
             if(isLassoing) { 
-                let w=Math.abs(e.clientX-startX), h=Math.abs(e.clientY-startY), l=Math.min(e.clientX,startX), t=Math.min(e.clientY,startY); 
+                if(e.cancelable) e.preventDefault();
+                let w=Math.abs(clientX-startX), h=Math.abs(clientY-startY), l=Math.min(clientX,startX), t=Math.min(clientY,startY); 
                 if (w > 2 || h > 2) selectionBox.style.display = 'block';
                 Object.assign(selectionBox.style, {width:w+'px', height:h+'px', left:l+'px', top:t+'px'});
                 const br=selectionBox.getBoundingClientRect();
@@ -2245,12 +2308,20 @@ DETAIL_HTML = '''
                     else { x.classList.remove('selected-player'); selectedPlayers=selectedPlayers.filter(y=>y!==x); }
                 });
             } else if(activePlayer) {
-                if (Math.abs(e.clientX - activePlayer.mX) > 3 || Math.abs(e.clientY - activePlayer.mY) > 3) activePlayer.dragging=true;
-                const r=pitch.getBoundingClientRect(), dx=((e.clientX-activePlayer.mX)/r.width)*100, dy=((e.clientY-activePlayer.mY)/r.height)*100;
+                if(e.cancelable) e.preventDefault();
+                if (Math.abs(clientX - activePlayer.mX) > 3 || Math.abs(clientY - activePlayer.mY) > 3) activePlayer.dragging=true;
+                const r=pitch.getBoundingClientRect(), dx=((clientX-activePlayer.mX)/r.width)*100, dy=((clientY-activePlayer.mY)/r.height)*100;
                 selectedPlayers.forEach(x=>{ x.style.left=Math.max(0,Math.min(100,x.startL+dx))+'%'; if(x.startB!==null) x.style.bottom=Math.max(0,Math.min(100,x.startB-dy))+'%'; else x.style.top=Math.max(0,Math.min(100,x.startT+dy))+'%'; });
             }
-        });
-        document.addEventListener('mouseup', () => { isLassoing=false; selectionBox.style.display='none'; if(activePlayer) selectedPlayers.forEach(p => p.style.transition = ''); activePlayer=null; });
+        }
+        function handleEnd() { isLassoing=false; selectionBox.style.display='none'; if(activePlayer) selectedPlayers.forEach(p => p.style.transition = ''); activePlayer=null; }
+        
+        document.addEventListener('mousedown', handleStart);
+        document.addEventListener('touchstart', handleStart, {passive: false});
+        document.addEventListener('mousemove', handleMove);
+        document.addEventListener('touchmove', handleMove, {passive: false});
+        document.addEventListener('mouseup', handleEnd);
+        document.addEventListener('touchend', handleEnd);
     </script>
 
     <div id="modal-overlay" onclick="if(event.target==this) closeModal()"><div id="player-modal"><div id="modal-content"></div></div></div>
@@ -2492,7 +2563,7 @@ DETAIL_HTML = '''
 
             <!-- HISTORIAL ARBITRO -->
             <div class="bg-slate-800/40 p-6 rounded-[2.5rem] text-[15px] border border-slate-700/50 shadow-xl">
-                <h3 class="font-black text-yellow-500 uppercase italic tracking-widest mb-6 border-l-4 border-yellow-500 pl-4">Historial del Arbitro</h3>
+                <h3 class="font-black text-yellow-500 uppercase italic tracking-widest mb-6 border-l-4 border-yellow-500 pl-4">Historial del Arbitro : <a class="text-[12px] text-yellow-500 hover:underline" href="/referee/{{ match.referee }}">{{match.referee}}</a></h3>
                 <div class="space-y-3">
                     {% for r in ref_history %}
                     <div class="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">

@@ -245,6 +245,31 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
 
     return results_made, results_against
 
+def _get_stat_sql_config(rank_type, filter_type):
+    """Helper para obtener fragmentos SQL segun el tipo de estadistica."""
+    base_join = ""
+    val_col = ""
+    extra_where = ""
+    
+    if rank_type == 'tiradores' or rank_type == 'shots':
+        base_join = "LEFT JOIN shots s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id"
+        val_col = "COUNT(s.shot_id)"
+        if filter_type == 'target': extra_where = "AND s.on_target = 1"
+        elif filter_type == 'long': extra_where = "AND s.inside_box = 0"
+    elif rank_type == 'headers':
+        base_join = "LEFT JOIN shots s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id"
+        val_col = "COUNT(s.shot_id)"
+        extra_where = "AND s.shot_type = 'Header'"
+    elif rank_type == 'yellows' or rank_type == 'cards':
+        base_join = "LEFT JOIN cards c ON pmd.player_id = c.player_id AND pmd.match_id = c.match_id"
+        val_col = "COUNT(c.card_id)"
+    elif rank_type == 'fouls':
+        val_col = "SUM(pmd.fouls_committed)"
+    elif rank_type == 'fouls_rec' or rank_type == 'fouls_received':
+        val_col = "SUM(pmd.fouls_received)"
+        
+    return base_join, val_col, extra_where
+
 def get_rankings_from_stats(category='shots', filter_type='all', order_by='total'):
     """Helper para el predictor: convierte las listas de stats en dicts de ranking {ID: Posicion}"""
     made_list, against_list = get_team_stats_core(category, filter_type, order_by)
@@ -253,7 +278,7 @@ def get_rankings_from_stats(category='shots', filter_type='all', order_by='total
     rank_against = {item['id']: i+1 for i, item in enumerate(against_list)}
     return rank_made, rank_against
 
-def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', limit=None):
+def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', limit=None, match_id=None):
     """
     Ranking de jugadores individuales. 
     Si limit tiene valor (ej: 5), busca solo los ultimos N partidos finalizados del equipo.
@@ -261,29 +286,30 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
     conn = get_db_connection()
     lt_sub = "(SELECT team_id FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
     match_filter = ""
-    if limit:
-        match_ids = [r[0] for r in conn.execute("SELECT id FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?", (str(team_id), str(team_id), limit)).fetchall()]
-        if match_ids:
-            ids_str = ",".join([f"'{mid}'" for mid in match_ids])
+
+    if match_id:
+        match_filter = f"AND pmd.match_id = '{match_id}'"
+    elif limit:
+        match_rows = conn.execute("SELECT id FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?", (str(team_id), str(team_id), limit)).fetchall()
+        if match_rows:
+            ids_str = ",".join([f"'{mid}'" for mid in [r[0] for r in match_rows]])
             match_filter = f"AND pmd.match_id IN ({ids_str})"
         else: return []
 
-    if rank_type == 'tiradores':
-        jf = "AND s.on_target = 1" if filter_type == 'target' else "AND s.inside_box = 0" if filter_type == 'long' else ""
-        query = f'SELECT pmd.player_id, pmd.player_name, pmd.position, COUNT(s.shot_id) as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct FROM player_match_details pmd LEFT JOIN shots s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id {jf} WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} GROUP BY pmd.player_id HAVING val > 0 ORDER BY val DESC'
-    elif rank_type == 'headers':
-        query = f'SELECT pmd.player_id, pmd.player_name, pmd.position, COUNT(s.shot_id) as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct FROM player_match_details pmd LEFT JOIN shots s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id AND s.shot_type = "Header" WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} GROUP BY pmd.player_id HAVING val > 0 ORDER BY val DESC'
-    elif rank_type == 'yellows':
-        query = f'SELECT pmd.player_id, pmd.player_name, pmd.position, COUNT(c.card_id) as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct FROM player_match_details pmd LEFT JOIN cards c ON pmd.player_id = c.player_id AND pmd.match_id = c.match_id WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} GROUP BY pmd.player_id HAVING val > 0 ORDER BY val DESC'
-    elif rank_type == 'fouls':
-        query = f'SELECT pmd.player_id, pmd.player_name, pmd.position, SUM(pmd.fouls_committed) as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} GROUP BY pmd.player_id HAVING val > 0 ORDER BY val DESC'
-    elif rank_type == 'fouls_rec':
-        query = f'SELECT pmd.player_id, pmd.player_name, pmd.position, SUM(pmd.fouls_received) as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} GROUP BY pmd.player_id HAVING val > 0 ORDER BY val DESC'
+    join_sql, val_sql, where_sql = _get_stat_sql_config(rank_type, filter_type)
+    
+    query = f'''
+        SELECT pmd.player_id, pmd.player_name, pmd.position, {val_sql} as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct 
+        FROM player_match_details pmd 
+        {join_sql} 
+        WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} {where_sql}
+        GROUP BY pmd.player_id HAVING val > 0 ORDER BY val DESC
+    '''
     
     res = conn.execute(query, (str(team_id),)).fetchall()
-    u_map = {"tiradores": "tiros", "headers": "cabezazos", "yellows": "tarjetas", "fouls": "faltas", "fouls_rec": "recibidas"}
+    u_map = {"tiradores": "tiros", "shots": "tiros", "headers": "cabezazos", "yellows": "tarjetas", "cards": "tarjetas", "fouls": "faltas", "fouls_rec": "recibidas", "fouls_received": "recibidas"}
     conn.close()
-    return [{"player_id": r["player_id"], "name": r["player_name"], "pos": r["position"], "val": r["val"], "pj": r["pj"], "unit": u_map.get(rank_type), "is_transferred": str(r["ct"]) != str(team_id)} for r in res]
+    return [{"player_id": r["player_id"], "name": r["player_name"], "pos": r["position"], "val": int(r["val"] or 0), "pj": r["pj"], "unit": u_map.get(rank_type), "is_transferred": str(r["ct"]) != str(team_id)} for r in res]
 
 
 
@@ -344,49 +370,18 @@ def get_league_player_stats(rank_type='shots', filter_type='all',order_by='total
     # Subconsulta para obtener el nombre del equipo mas reciente del jugador
     team_sub = "(SELECT CASE WHEN pmd2.team_id = m2.id_home_team THEN m2.home_team ELSE m2.away_team END FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
     pj = "SELECT player_id, COUNT(DISTINCT pmd.match_id) as pj, SUM(pmd.minutes_played) as minutes_played FROM player_match_details pmd WHERE pmd.minutes_played > 0 GROUP BY player_id"
-    order_by = '(pj_table.minutes_played >= 300)' if order_by == 'avg' else 'total'
-    if rank_type == 'shots':
-        jf = "AND s.on_target = 1" if filter_type == 'target' else "AND s.inside_box = 0" if filter_type == 'long' else ""
-        query = f'''
-        SELECT pmd.player_id as id, pmd.player_name as name, pmd.team_id, {team_sub} as team_name, COUNT(s.shot_id) as total, pj_table.pj as pj, pj_table.minutes_played as minutes_played, (CAST(COUNT(s.shot_id) AS FLOAT) / pj_table.minutes_played)*90 as avg 
-        FROM player_match_details pmd 
-        LEFT JOIN shots s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id LEFT JOIN ({pj}) pj_table ON pmd.player_id = pj_table.player_id
-        WHERE 1=1 {jf} 
-        GROUP BY pmd.player_id HAVING COUNT(s.shot_id) > 0 
-        ORDER BY {order_by} DESC LIMIT {limit}'''
+    order_by_clause = '(pj_table.minutes_played >= 300)' if order_by == 'avg' else 'total'
+    
+    join_sql, val_sql, where_sql = _get_stat_sql_config(rank_type, filter_type)
 
-    elif rank_type == 'headers':
-        query = f'''
-        SELECT pmd.player_id as id, pmd.player_name as name, pmd.team_id, {team_sub} as team_name, COUNT(s.shot_id) as total, pj_table.pj as pj, pj_table.minutes_played as minutes_played, (CAST(COUNT(s.shot_id) AS FLOAT) / pj_table.minutes_played)*90 as avg
-        FROM player_match_details pmd LEFT JOIN shots s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id AND s.shot_type = "Header" 
-        LEFT JOIN ({pj}) pj_table ON pmd.player_id = pj_table.player_id 
-        GROUP BY pmd.player_id HAVING COUNT(s.shot_id) > 0 
-        ORDER BY {order_by} DESC LIMIT {limit}'''
-
-    elif rank_type == 'cards':
-        query = f'''
-        SELECT pmd.player_id as id, pmd.player_name as name, pmd.team_id, {team_sub} as team_name, COUNT(c.card_id) as total, pj_table.pj as pj, pj_table.minutes_played as minutes_played, (CAST(COUNT(c.card_id) AS FLOAT) / pj_table.minutes_played)*90 as avg
-        FROM player_match_details pmd 
-        LEFT JOIN cards c ON pmd.player_id = c.player_id AND pmd.match_id = c.match_id LEFT JOIN ({pj}) pj_table ON pmd.player_id = pj_table.player_id
-        GROUP BY pmd.player_id 
-        HAVING COUNT(c.card_id) > 0 
-        ORDER BY {order_by} DESC LIMIT {limit}'''
-    elif rank_type == 'fouls':
-        query = f'''    
-        SELECT pmd.player_id as id, pmd.player_name as name, pmd.team_id, {team_sub} as team_name, SUM(pmd.fouls_committed) as total, pj_table.pj as pj, pj_table.minutes_played as minutes_played, (CAST(SUM(pmd.fouls_committed) AS FLOAT) / pj_table.minutes_played)*90 as avg
-        FROM player_match_details pmd 
-        LEFT JOIN ({pj}) pj_table ON pmd.player_id = pj_table.player_id
-        GROUP BY pmd.player_id      
-        HAVING SUM(pmd.fouls_committed) > 0 
-        ORDER BY {order_by} DESC LIMIT {limit}'''
-    elif rank_type in ('fouls_rec', 'fouls_received'):
-        query = f'''    
-        SELECT pmd.player_id as id, pmd.player_name as name, pmd.team_id, {team_sub} as team_name, SUM(pmd.fouls_received) as total, pj_table.pj as pj, pj_table.minutes_played as minutes_played, (CAST(SUM(pmd.fouls_received) AS FLOAT) / pj_table.minutes_played)*90 as avg
-        FROM player_match_details pmd 
-        LEFT JOIN ({pj}) pj_table ON pmd.player_id = pj_table.player_id
-        GROUP BY pmd.player_id      
-        HAVING SUM(pmd.fouls_received) > 0 
-        ORDER BY {order_by} DESC LIMIT {limit}'''
+    query = f'''
+    SELECT pmd.player_id as id, pmd.player_name as name, pmd.team_id, {team_sub} as team_name, {val_sql} as total, pj_table.pj as pj, pj_table.minutes_played as minutes_played, (CAST({val_sql} AS FLOAT) / pj_table.minutes_played)*90 as avg 
+    FROM player_match_details pmd 
+    {join_sql} 
+    LEFT JOIN ({pj}) pj_table ON pmd.player_id = pj_table.player_id
+    WHERE 1=1 {where_sql} 
+    GROUP BY pmd.player_id HAVING total > 0 
+    ORDER BY {order_by_clause} DESC LIMIT {limit}'''
     
     res = conn.execute(query).fetchall()
     conn.close()
@@ -558,14 +553,60 @@ def match_detail(match_id):
         stats["away"]["cards"] = conn.execute('SELECT COUNT(*) FROM cards WHERE match_id=? AND team_id=?', (str(match_id), str(match['id_away_team']))).fetchone()[0]
         for r in conn.execute('SELECT team_id, SUM(fouls_committed) as f FROM player_match_details WHERE match_id=? GROUP BY team_id', (str(match_id),)).fetchall():
             k = "home" if str(r['team_id']) == str(match['id_home_team']) else "away"; stats[k]["fouls"] = r['f'] or 0
+
+    # H2H: Partidos previos entre estos dos equipos
+    h2h_matches = conn.execute('''
+        SELECT id, date, tournament, home_team, away_team, score, id_home_team, id_away_team
+        FROM matches
+        WHERE ((id_home_team = ? AND id_away_team = ?) OR (id_home_team = ? AND id_away_team = ?))
+          AND finished = 1 AND id != ?
+        ORDER BY date DESC LIMIT 5
+    ''', (str(match['id_home_team']), str(match['id_away_team']), str(match['id_away_team']), str(match['id_home_team']), str(match_id))).fetchall()
+
+    # Historial del Arbitro con estos equipos
+    ref_history = []
+    if match['referee']:
+        # Buscar partidos de este arbitro dirigiendo a CUALQUIERA de los dos equipos
+        ref_matches_raw = conn.execute('''
+            SELECT m.id, m.date, m.tournament, m.home_team, m.away_team, m.id_home_team, m.id_away_team, m.score
+            FROM matches m
+            WHERE m.referee = ?
+              AND (m.id_home_team IN (?, ?) OR m.id_away_team IN (?, ?))
+              AND m.finished = 1 AND m.id != ?
+            ORDER BY m.date DESC LIMIT 10
+        ''', (match['referee'], str(match['id_home_team']), str(match['id_away_team']), str(match['id_home_team']), str(match['id_away_team']), str(match_id))).fetchall()
+
+        for m in ref_matches_raw:
+            mid = str(m['id'])
+            # Faltas por equipo
+            f_h = conn.execute('SELECT SUM(fouls_committed) FROM player_match_details WHERE match_id=? AND team_id=?', (mid, str(m['id_home_team']))).fetchone()[0] or 0
+            f_v = conn.execute('SELECT SUM(fouls_committed) FROM player_match_details WHERE match_id=? AND team_id=?', (mid, str(m['id_away_team']))).fetchone()[0] or 0
+            # Tarjetas por equipo
+            c_h = conn.execute('SELECT COUNT(*) FROM cards WHERE match_id=? AND team_id=?', (mid, str(m['id_home_team']))).fetchone()[0] or 0
+            c_v = conn.execute('SELECT COUNT(*) FROM cards WHERE match_id=? AND team_id=?', (mid, str(m['id_away_team']))).fetchone()[0] or 0
+            
+            ref_history.append({
+                'date': m['date'], 'match_id': m['id'], 
+                'home_team': m['home_team'], 'away_team': m['away_team'], 
+                'score': m['score'], 'tournament': m['tournament'],
+                'stats': {'h_cards': c_h, 'h_fouls': f_h, 'v_cards': c_v, 'v_fouls': f_v},
+                'id_home_team': m['id_home_team'], 'id_away_team': m['id_away_team']
+            })
+
     conn.close()
-    return render_template_string(DETAIL_HTML, match=match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf)
+    return render_template_string(DETAIL_HTML, match=match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf, h2h_matches=h2h_matches, ref_history=ref_history)
 
 @app.route('/api/team_ranking/<team_id>')
 def api_team_ranking(team_id):
     limit = request.args.get('limit', type=int)
-    return jsonify(get_team_rankings_logic(team_id, request.args.get('type', 'tiradores'), request.args.get('filter', 'all'), limit))
-
+    match_id = request.args.get('match_id') # Capturamos el match_id
+    return jsonify(get_team_rankings_logic(
+        team_id, 
+        request.args.get('type', 'tiradores'), 
+        request.args.get('filter', 'all'), 
+        limit,
+        match_id
+    ))
 
 @app.route('/api/team_stats')
 def api_team_stats():
@@ -745,11 +786,18 @@ def team_page(team_id):
     team_name = conn.execute('SELECT home_team FROM matches WHERE id_home_team = ? UNION SELECT away_team FROM matches WHERE id_away_team = ? LIMIT 1', (str(team_id), str(team_id))).fetchone()
     if not team_name: return "Equipo no encontrado", 404
     
-    # Historial de partidos
-    matches = conn.execute('''
+    # Historial de partidos (Finalizados)
+    matches_finished = conn.execute('''
         SELECT * FROM matches 
-        WHERE id_home_team = ? OR id_away_team = ? 
+        WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1
         ORDER BY date DESC
+    ''', (str(team_id), str(team_id))).fetchall()
+
+    # Partidos Proximos (Pendientes)
+    matches_upcoming = conn.execute('''
+        SELECT * FROM matches 
+        WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 0
+        ORDER BY date ASC
     ''', (str(team_id), str(team_id))).fetchall()
     
     global_ranks = get_team_global_positions(team_id)
@@ -758,7 +806,8 @@ def team_page(team_id):
     return render_template_string(TEAM_HTML, 
                                   team_id=team_id, 
                                   team_name=team_name[0], 
-                                  matches=matches, 
+                                  matches_finished=matches_finished,
+                                  matches_upcoming=matches_upcoming,
                                   global_ranks=global_ranks)
 
 
@@ -857,6 +906,57 @@ INDEX_HTML = '''
     <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
 </head>
 <body class="p-8 font-sans">
+        <script>
+        function stepGameweek(delta) {
+            const gameweekSelect = document.getElementById('gameweek-select');
+            const tournamentSelect = document.getElementById('tournament-select');
+            const yearSelect = document.getElementById('year-select');
+            
+            const currentGameweek = parseInt(gameweekSelect.value);
+            const currentTournament = tournamentSelect.value;
+            const currentYear = yearSelect.value;
+            
+            let newGameweek = currentGameweek + delta;
+            let newTournament = currentTournament;
+            let newYear = currentYear;
+            
+            // Logica para navegar hacia atras (delta = -1)
+            if (delta === -1) {
+                if (newGameweek < 1) {
+                    // Cambiar a torneo anterior
+                    if (currentTournament === "Liga Profesional Apertura") {
+                        newTournament = "Liga Profesional Clausura";
+                        newYear = (parseInt(currentYear) - 1).toString();
+                        newGameweek = 20;
+                    } else {
+                        newTournament = "Liga Profesional Apertura";
+                        newGameweek = 20;
+                    }
+                }
+            }
+            // Logica para navegar hacia adelante (delta = 1)
+            else if (delta === 1) {
+                if (newGameweek > 20) {
+                    // Cambiar a torneo siguiente
+                    if (currentTournament === "Liga Profesional Apertura") {
+                        newTournament = "Liga Profesional Clausura";
+                        newGameweek = 1;
+                    } else {
+                        newTournament = "Liga Profesional Apertura";
+                        newYear = (parseInt(currentYear) + 1).toString();
+                        newGameweek = 1;
+                    }
+                }
+            }
+            
+            // Actualizar los selects y enviar el formulario
+            yearSelect.value = newYear;
+            tournamentSelect.value = newTournament;
+            gameweekSelect.value = newGameweek;
+            
+            document.getElementById('filter-form').submit();
+        }
+    </script>
     <div class="max-w-5xl mx-auto">
         <header class="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
             <a href="/"><h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1></a>
@@ -1006,60 +1106,7 @@ INDEX_HTML = '''
             {% endif %}
         </div>
     </div>
-    ''' + FOOTER_HTML + '''
-    <script>
-        function stepGameweek(delta) {
-            const gameweekSelect = document.getElementById('gameweek-select');
-            const tournamentSelect = document.getElementById('tournament-select');
-            const yearSelect = document.getElementById('year-select');
-            
-            const currentGameweek = parseInt(gameweekSelect.value);
-            const currentTournament = tournamentSelect.value;
-            const currentYear = yearSelect.value;
-            
-            let newGameweek = currentGameweek + delta;
-            let newTournament = currentTournament;
-            let newYear = currentYear;
-            
-            // Logica para navegar hacia atras (delta = -1)
-            if (delta === -1) {
-                if (newGameweek < 1) {
-                    // Cambiar a torneo anterior
-                    if (currentTournament === "Liga Profesional Apertura") {
-                        newTournament = "Liga Profesional Clausura";
-                        newYear = (parseInt(currentYear) - 1).toString();
-                        newGameweek = 20;
-                    } else {
-                        newTournament = "Liga Profesional Apertura";
-                        newGameweek = 20;
-                    }
-                }
-            }
-            // Logica para navegar hacia adelante (delta = 1)
-            else if (delta === 1) {
-                if (newGameweek > 20) {
-                    // Cambiar a torneo siguiente
-                    if (currentTournament === "Liga Profesional Apertura") {
-                        newTournament = "Liga Profesional Clausura";
-                        newGameweek = 1;
-                    } else {
-                        newTournament = "Liga Profesional Apertura";
-                        newYear = (parseInt(currentYear) + 1).toString();
-                        newGameweek = 1;
-                    }
-                }
-            }
-            
-            // Actualizar los selects y enviar el formulario
-            yearSelect.value = newYear;
-            tournamentSelect.value = newTournament;
-            gameweekSelect.value = newGameweek;
-            
-            document.getElementById('filter-form').submit();
-        }
-    </script>
-</body></html>
-'''
+    ''' + FOOTER_HTML + '''</body></html>'''
 
 STATS_HTML = '''
 <!DOCTYPE html>
@@ -1080,26 +1127,7 @@ STATS_HTML = '''
     </style>
 </head>
 <body class="p-8 pb-0 font-sans">
-    <div class="max-w-[1500px] mx-auto">
-        <header class="flex flex-row justify-between items-center mb-16 gap-4">
-            <a href="/"><h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1></a>
-
-            <div class="flex bg-slate-800/50 p-1 rounded-2xl border border-slate-700 shadow-xl backdrop-blur-md">
-                <button id="btn-teams" onclick="switchMode('teams')" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg">Equipos</button>
-                <button id="btn-players" onclick="switchMode('players')" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Jugadores</button>
-            </div>
-
-            <nav>
-                <a href="/" class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">← Volver</a>
-            </nav>
-        </header>
-
-        <div id="stats-grid-root" class="space-y-20">
-            </div>
-    </div>
-</body>
-''' + FOOTER_HTML + '''
-<script>
+    <script>
     // Funcion de color solicitada
     function getPosColorClass(v) { 
         if (v === 'N/A') return 'text-slate-500';
@@ -1329,8 +1357,26 @@ STATS_HTML = '''
     }
 
     renderAll();
-</script>
-</body></html>'''
+    </script>
+    <div class="max-w-[1500px] mx-auto">
+        <header class="flex flex-row justify-between items-center mb-16 gap-4">
+            <a href="/"><h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1></a>
+
+            <div class="flex bg-slate-800/50 p-1 rounded-2xl border border-slate-700 shadow-xl backdrop-blur-md">
+                <button id="btn-teams" onclick="switchMode('teams')" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg">Equipos</button>
+                <button id="btn-players" onclick="switchMode('players')" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Jugadores</button>
+            </div>
+
+            <nav>
+                <a href="/" class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">← Volver</a>
+            </nav>
+        </header>
+
+        <div id="stats-grid-root" class="space-y-20">
+            </div>
+    </div>
+</body>
+''' + FOOTER_HTML + '''</body></html>'''
 
 TEAM_HTML = '''
 <!DOCTYPE html>
@@ -1363,115 +1409,30 @@ TEAM_HTML = '''
     <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
 </head>
 <body class="p-8 font-sans">
-    <div class="max-w-7xl mx-auto space-y-12">
-        <header class="flex justify-between items-center">
-            <div>
-                <a href="/" class="text-sky-500 font-black uppercase text-xs tracking-widest hover:underline">← Volver a Partidos</a>
-                <h1 class="text-6xl font-black italic uppercase tracking-tighter text-white mt-2">{{ team_name }}</h1>
-            </div>
-            <div class="bg-slate-800 p-4 rounded-3xl border border-slate-700 text-center min-w-[200px]">
-                <span class="text-[10px] font-black text-slate-500 uppercase block mb-1">ID de Equipo</span>
-                <span class="text-2xl font-mono font-black text-sky-400">{{ team_id }}</span>
-            </div>
-        </header>
+        <script>
+        function showMatches(type) {
+            const finished = document.getElementById('matches-finished');
+            const upcoming = document.getElementById('matches-upcoming');
+            const btnFinished = document.getElementById('btn-finished');
+            const btnUpcoming = document.getElementById('btn-upcoming');
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            if (type === 'finished') {
+                finished.classList.remove('hidden');
+                upcoming.classList.add('hidden');
+                btnFinished.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                btnFinished.classList.remove('text-slate-500');
+                btnUpcoming.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+                btnUpcoming.classList.add('text-slate-500');
+            } else {
+                finished.classList.add('hidden');
+                upcoming.classList.remove('hidden');
+                btnUpcoming.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                btnUpcoming.classList.remove('text-slate-500');
+                btnFinished.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+                btnFinished.classList.add('text-slate-500');
+            }
+        }
 
-            <!-- ULTIMOS PARTIDOS -->
-            <div class="space-y-6">
-                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-slate-500 pl-4">ultimos Partidos</h2>
-                <div class="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scroll">
-                    {% for m in matches %}
-                    <a href="/match/{{ m.id }}" class="block bg-slate-900/50 p-4 rounded-2xl border border-slate-800 hover:border-sky-500 transition-all">
-                        <div class="flex justify-between text-[9px] font-black text-slate-500 uppercase mb-2">
-                            <span>{{ m.date[:10] }}</span>
-                            <span>{{ m.tournament }} Fecha {{ m.gameweek }}</span>
-                        </div>
-                        <div class="flex justify-between items-center">
-                            <span class="text-sm font-bold whitespace-nowrap w-[140px] overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_home_team|string == team_id|string else 'text-slate-400' }}">{{ m.home_team }}</span>
-                            <span class="bg-slate-800 px-3 py-1 rounded-lg font-mono font-black text-xs">{{ m.score or 'VS' }}</span>
-                            <span class="text-sm text-right font-bold whitespace-nowrap w-[140px] overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_away_team|string == team_id|string else 'text-slate-400' }}">{{ m.away_team }}</span>
-                        </div>
-                    </a>
-                    {% endfor %}
-                </div>
-            </div>
-            <div class="space-y-6">
-                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-sky-500 pl-4">Posiciones en Estadisticas</h2>
-                {# Macro para definir el color de la posicion basado en tu funcion #}
-                {% macro get_pos_color(v) -%}
-                    {% if v == 'N/A' %}text-slate-500
-                    {% elif v|int > 20 %}text-red-500
-                    {% elif v|int > 10 %}text-blue-500
-                    {% else %}text-green-500
-                    {% endif %}
-                {%- endmacro %}
-                <div class="bg-slate-800/20 rounded-[2rem] m-auto border border-slate-700/50 overflow-hidden">
-                    {% for pair in global_ranks %}
-                    <div class="grid grid-cols-2 border-b border-slate-700/30 last:border-0 hover:bg-slate-700/10 transition-colors">
-                        <div class="p-4 flex justify-between items-center border-r border-slate-700/30">
-                            <div class="flex flex-col">
-                                <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">{{ pair.made.label }}</span>
-                                <div class="flex items-baseline gap-2">
-                                    <span class="text-[16px] font-black {{ get_pos_color(pair.made.pos) }}">#{{ pair.made.pos }}</span>
-                                    <span class="text-[11px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.made.total }}</b></span>
-                                    <span class="text-[11px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.made.pj }}</b></span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="p-4 flex justify-between items-center bg-red-500/5">
-                            <div class="flex flex-col">
-                                <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">{{ pair.against.label }}</span>
-                                <div class="flex items-baseline gap-2">
-                                    <span class="text-[16px] font-black {{ get_pos_color(pair.against.pos) }}">#{{ pair.against.pos }}</span>
-                                    <span class="text-[11px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.against.total }}</b></span>
-                                    <span class="text-[11px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.against.pj }}</b></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <!-- RANKING -->
-            <div class="space-y-3">
-                <div class="flex justify-between items-center border-l-4 border-orange-500 pl-4">
-                    <h2 class="text-xl font-black uppercase italic tracking-tighter">Estadisticas Plantel</h2>
-                    <button onclick="toggleL5()" id="l5-btn" class="text-[9px] px-3 py-1 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
-                </div>
-                <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
-                    <div class="flex flex-wrap justify-center gap-1 mb-2">
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold rank-btn" id="btn-main">Tiros</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'headers', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Cabezazos</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'yellows', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Tarjetas</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas Rec.</button>
-                    </div>
-                    <div id="sub-filters" class="sub-menu flex gap-1 justify-center mt-2" style="display:none;">
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" id="sub-all" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-black sub-btn">Todos</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'target', event)" id="sub-target" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black sub-btn">Arco</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'long', event)" id="sub-long" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black sub-btn">Lejos</button>
-                    </div>
-                </div>
-
-                <div id="player-ranking-list" class="space-y-1"></div> 
-                <div class="flex justify-center gap-4 mt-2">
-                    <button onclick="changePage(-1)" class="text-sky-400 hover:text-white">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg>
-                    </button>
-
-                    <span id="player-page-info" class="text-[10px] font-black text-slate-500 uppercase mt-0.5">1 / 1</span> 
-                    
-                    <button onclick="changePage(1)" class="text-sky-400 hover:text-white">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    '''+FOOTER_HTML+'''
-    <script>
         let currentType = 'tiradores';
         let isL5 = false;
         let teamPlayerData = []; 
@@ -1483,8 +1444,13 @@ TEAM_HTML = '''
         function toggleL5() {
             isL5 = !isL5;
             const btn = document.getElementById('l5-btn');
-            btn.classList.toggle('bg-sky-500', isL5);
-            btn.classList.toggle('text-white', isL5);
+            if (isL5) {
+                btn.classList.remove('text-slate-500', 'border-slate-700');
+                btn.classList.add('bg-sky-500', 'text-white', 'border-transparent');
+            } else {
+                btn.classList.add('text-slate-500', 'border-slate-700');
+                btn.classList.remove('bg-sky-500', 'text-white', 'border-transparent');
+            }
             updateTeamRanking(teamId, currentType); // Recargar
         }
 
@@ -1536,13 +1502,30 @@ TEAM_HTML = '''
                 const buttons = document.querySelectorAll(isSubBtn ? `#sub-filters button` : `.rank-btn`);
                 buttons.forEach(b => { 
                     b.classList.remove('bg-sky-500', 'text-white'); 
-                    b.classList.add('bg-slate-800', 'text-slate-500'); 
+                    b.classList.add('bg-slate-800', 'text-slate-500'); // text-slate-400 was used in HTML but JS sets 500
                 });
+                e.currentTarget.classList.remove('bg-slate-800', 'text-slate-500', 'text-slate-400');
                 e.currentTarget.classList.add('bg-sky-500', 'text-white');
             }
 
             const subMenu = document.getElementById(`sub-filters`);
-            if (subMenu) subMenu.style.display = (rankType === 'tiradores') ? 'flex' : 'none';
+            if (rankType === 'tiradores') { 
+                subMenu.style.display = 'flex';
+                const subBtns = subMenu.querySelectorAll('button');
+                subBtns.forEach(b => {
+                    const type = b.id.split('-').pop(); // all, target, long
+                    if (type === shotFilter) {
+                        b.classList.remove('bg-slate-800', 'text-slate-500');
+                        b.classList.add('bg-sky-500', 'text-white');
+                    } else {
+                        b.classList.add('bg-slate-800', 'text-slate-500');
+                        b.classList.remove('bg-sky-500', 'text-white');
+                    }
+                });
+            } else { 
+                subMenu.style.display = 'none'; 
+            }
+
             
             const limit = isL5 ? 5 : '';
             fetch(`/api/team_ranking/${tId}?type=${rankType}&filter=${shotFilter}&limit=${limit}`)
@@ -1556,8 +1539,141 @@ TEAM_HTML = '''
 
         window.onload = () => { updateTeamRanking(teamId, 'tiradores'); };
     </script>
-</body></html>
-'''
+    <div class="max-w-7xl mx-auto space-y-12">
+        <header class="flex justify-between items-center">
+            <div>
+                <a href="/" class="text-sky-500 font-black uppercase text-xs tracking-widest hover:underline">← Volver a Partidos</a>
+                <h1 class="text-6xl font-black italic uppercase tracking-tighter text-white mt-2">{{ team_name }}</h1>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-3xl border border-slate-700 text-center min-w-[200px]">
+                <span class="text-[10px] font-black text-slate-500 uppercase block mb-1">ID de Equipo</span>
+                <span class="text-2xl font-mono font-black text-sky-400">{{ team_id }}</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+
+            <!-- ULTIMOS PARTIDOS -->
+            <div class="space-y-6">
+                <div class="flex justify-between items-center border-l-4 border-slate-500 pl-4">
+                    <h2 class="text-xl font-black uppercase italic tracking-tighter">Partidos</h2>
+                    <div class="flex bg-slate-800 p-1 rounded-full border border-slate-700 text-[9px]">
+                        <button onclick="showMatches('finished')" id="btn-finished" class="px-3 py-1 rounded-full font-black uppercase transition-all bg-sky-500 text-white shadow-lg">Pasados</button>
+                        <button onclick="showMatches('upcoming')" id="btn-upcoming" class="px-3 py-1 rounded-full font-black uppercase transition-all text-slate-500 hover:text-white">Proximos</button>
+                    </div>
+                </div>
+                
+                <div id="matches-finished" class="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scroll">
+                    {% for m in matches_finished %}
+                    <a href="/match/{{ m.id }}" class="block bg-slate-900/50 p-4 rounded-2xl border border-slate-800 hover:border-sky-500 transition-all">
+                        <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase mb-2">
+                            <span>{{ m.date[:10] }}</span>
+                            <span>{{ m.tournament }} Fecha {{ m.gameweek }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[14px]">
+                            <span class="font-bold whitespace-nowrap w-[140px] overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_home_team|string == team_id|string else 'text-slate-400' }}">{{ m.home_team }}</span>
+                            <span class="bg-slate-800 px-3 py-1 rounded-lg font-mono font-black">{{ m.score or 'VS' }}</span>
+                            <span class="text-right font-bold whitespace-nowrap w-[120px] overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_away_team|string == team_id|string else 'text-slate-400' }}">{{ m.away_team }}</span>
+                        </div>
+                    </a>
+                    {% else %}
+                    <p class="text-center text-xs text-slate-500 italic py-4">No hay partidos finalizados.</p>
+                    {% endfor %}
+                </div>
+
+                <div id="matches-upcoming" class="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scroll hidden">
+                    {% for m in matches_upcoming %}
+                    <a href="/match/{{ m.id }}" class="block bg-slate-900/50 p-4 rounded-2xl border border-slate-800 hover:border-sky-500 transition-all">
+                        <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase mb-2">
+                            <span>{{ m.date[:10] }}</span>
+                            <span>{{ m.tournament }} Fecha {{ m.gameweek }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[14px]">
+                            <span class="font-bold whitespace-nowrap w-[140px] overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_home_team|string == team_id|string else 'text-slate-400' }}">{{ m.home_team }}</span>
+                            <span class="bg-slate-800 px-3 py-1 rounded-lg font-mono font-black text-emerald-400 animate-pulse">VS</span>
+                            <span class="text-right font-bold whitespace-nowrap w-[140px] overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_away_team|string == team_id|string else 'text-slate-400' }}">{{ m.away_team }}</span>
+                        </div>
+                    </a>
+                    {% else %}
+                    <p class="text-center text-xs text-slate-500 italic py-4">No hay partidos proximos programados.</p>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="space-y-6">
+                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-sky-500 pl-4">Posiciones en Estadisticas</h2>
+                {# Macro para definir el color de la posicion basado en tu funcion #}
+                {% macro get_pos_color(v) -%}
+                    {% if v == 'N/A' %}text-slate-500
+                    {% elif v|int > 20 %}text-red-500
+                    {% elif v|int > 10 %}text-blue-500
+                    {% else %}text-green-500
+                    {% endif %}
+                {%- endmacro %}
+                <div class="bg-slate-800/20 rounded-[2rem] m-auto border border-slate-700/50 overflow-hidden">
+                    {% for pair in global_ranks %}
+                    <div class="grid grid-cols-2 border-b border-slate-700/30 last:border-0 hover:bg-slate-700/10 transition-colors">
+                        <div class="p-4 flex justify-between items-center border-r border-slate-700/30">
+                            <div class="flex flex-col">
+                                <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">{{ pair.made.label }}</span>
+                                <div class="flex items-baseline gap-2">
+                                    <span class="text-[16px] font-black {{ get_pos_color(pair.made.pos) }}">#{{ pair.made.pos }}</span>
+                                    <span class="text-[11px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.made.total }}</b></span>
+                                    <span class="text-[11px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.made.pj }}</b></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-4 flex justify-between items-center bg-red-500/5">
+                            <div class="flex flex-col">
+                                <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">{{ pair.against.label }}</span>
+                                <div class="flex items-baseline gap-2">
+                                    <span class="text-[16px] font-black {{ get_pos_color(pair.against.pos) }}">#{{ pair.against.pos }}</span>
+                                    <span class="text-[11px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.against.total }}</b></span>
+                                    <span class="text-[11px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.against.pj }}</b></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- RANKING -->
+            <div class="space-y-3">
+                <div class="flex justify-between items-center border-l-4 border-orange-500 pl-4">
+                    <h2 class="text-xl font-black uppercase italic tracking-tighter">Estadisticas Plantel</h2>
+                    <button onclick="toggleL5()" id="l5-btn" class="text-[9px] px-3 py-1 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
+                </div>
+                <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
+                    <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px]">
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold rank-btn" id="btn-main">Tiros</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'headers', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Cabezazos</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'yellows', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Tarjetas</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls_rec', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas Rec.</button>
+                    </div>
+                    <div id="sub-filters" class="sub-menu flex gap-1 justify-center mt-2 text-[11px]" style="display:none;">
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" id="sub-all" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-black sub-btn">Todos</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'target', event)" id="sub-target" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black sub-btn">Arco</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'long', event)" id="sub-long" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black sub-btn">Lejos</button>
+                    </div>
+                </div>
+
+                <div id="player-ranking-list" class="space-y-1"></div> 
+                <div class="flex justify-center gap-4 mt-2">
+                    <button onclick="changePage(-1)" class="text-sky-400 hover:text-white">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+
+                    <span id="player-page-info" class="text-[10px] font-black text-slate-500 uppercase mt-0.5">1 / 1</span> 
+                    
+                    <button onclick="changePage(1)" class="text-sky-400 hover:text-white">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    '''+FOOTER_HTML+'''</body></html>'''
 
 REFEREE_HTML = '''
 <!DOCTYPE html>
@@ -1601,28 +1717,28 @@ REFEREE_HTML = '''
                 <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-slate-500 pl-4">Partidos Dirigidos</h2>
                 <div class="space-y-4 max-h-[700px] overflow-y-auto pr-2 custom-scroll">
                     {% for m in matches %}
-                    <div class="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
-                    <a href="/match/{{ m.id }}">
-                        <div class="flex justify-between text-[9px] font-black text-slate-500 uppercase mb-3">
-                            <span>{{ m.date[:10] }}</span>
-                            <span>{{ m.tournament }}</span>
-                        </div>
-                        <div class="grid grid-cols-3 items-center gap-2 mb-3">
-                            <span class="text-xs font-bold text-center truncate">{{ m.home_team }}</span>
-                            <span class="bg-slate-800 py-1 rounded-lg font-mono font-black text-center text-xs">{{ m.score or 'VS' }}</span>
-                            <span class="text-xs font-bold text-center truncate">{{ m.away_team }}</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
-                            <div class="text-center">
-                                <p class="text-[8px] font-black text-slate-500 uppercase">Local</p>
-                                <p class="text-[11px] font-bold"><span class="text-yellow-500">{{ m.stats.h_cards }}T</span> | <span class="text-sky-400">{{ m.stats.h_fouls }}F</span></p>
+                    <div class="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 text-[15px]">
+                        <a href="/match/{{ m.id }}">
+                            <div class="flex justify-between text-[11px] font-black text-slate-500 uppercase mb-3">
+                                <span>{{ m.date[:10] }}</span>
+                                <span>{{ m.tournament }}</span>
                             </div>
-                            <div class="text-center">
-                                <p class="text-[8px] font-black text-slate-500 uppercase">Visita</p>
-                                <p class="text-[11px] font-bold"><span class="text-yellow-500">{{ m.stats.v_cards }}T</span> | <span class="text-sky-400">{{ m.stats.v_fouls }}F</span></p>
+                            <div class="grid grid-cols-3 items-center gap-2 mb-3 text-[14px]">
+                                <span class=" font-bold text-center truncate">{{ m.home_team }}</span>
+                                <span class="bg-slate-800 py-1 rounded-lg font-mono font-black text-center">{{ m.score or 'VS' }}</span>
+                                <span class=" font-bold text-center truncate">{{ m.away_team }}</span>
                             </div>
-                        </div>
-                    </a>
+                            <div class="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                                <div class="text-center">
+                                    <p class="text-[11px] font-black text-slate-500 uppercase">Local</p>
+                                    <p class="text-[12px] font-bold"><span class="text-yellow-500">{{ m.stats.h_cards }} Tarj.</span> | <span class="text-sky-400">{{ m.stats.h_fouls }} Faltas</span></p>
+                                </div>
+                                <div class="text-center">
+                                    <p class="text-[11px] font-black text-slate-500 uppercase">Visita</p>
+                                    <p class="text-[12px] font-bold"><span class="text-yellow-500">{{ m.stats.v_cards }} Tarj.</span> | <span class="text-sky-400">{{ m.stats.v_fouls }} Faltas</span></p>
+                                </div>
+                            </div>
+                        </a>
                     </div>
                     {% endfor %}
                 </div>
@@ -1685,10 +1801,7 @@ REFEREE_HTML = '''
             </div>
         </div>
     </div>
-    '''+FOOTER_HTML+'''
-</body>
-</html>
-'''
+    '''+FOOTER_HTML+'''</body></html>'''
 
 DETAIL_HTML = '''
 <!DOCTYPE html>
@@ -1780,220 +1893,8 @@ DETAIL_HTML = '''
     </style>
 </head>
 <body class="p-6">
-    <div id="modal-overlay" onclick="if(event.target==this) closeModal()"><div id="player-modal"><div id="modal-content"></div></div></div>
-    
-    <div id="subst-modal-overlay" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-[4000] flex items-center justify-center" onclick="if(event.target==this) closeSubstModal()">
-        <div class="bg-slate-900 border border-slate-700 w-full max-w-md p-8 rounded-[2rem] shadow-2xl">
-            <h3 class="text-xl font-black uppercase text-white mb-4 italic tracking-tighter">Sustitucion Tactica</h3>
-            <input type="text" id="subst-search" autocomplete="off" oninput="searchPlayers(this.value)" placeholder="Ingresa nombre o ID..." class="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl outline-none focus:border-sky-500 text-white text-sm mb-4">
-            <div id="subst-results" class="space-y-2 max-h-60 overflow-y-auto"></div>
-        </div>
-    </div>
 
-    <div id="selection-box"></div>
-    <div id="context-menu">
-        <div class="context-header" id="ctx-player-name">Jugador</div>
-        <div class="context-item" onclick="handleCtxAction('profile')">📊 Ver Perfil</div>
-        <div class="context-item" onclick="handleCtxAction('replace')">🔄 Reemplazar Jugador</div>
-        <div class="context-item" onclick="handleCtxAction('key')" id="ctx-key-label">⭐ Marcar como Clave</div>
-    </div>
-
-    <div class="max-w-[1600px] space-y-8 mx-auto">
-        <header class="flex justify-between items-center"><a href="/" class="bg-slate-800 px-6 py-2 rounded-xl font-bold border border-slate-700 hover:bg-slate-700 transition flex items-center gap-2"><span>←</span> INICIO</a><div class="text-right"><h2 class="text-sky-500 font-black italic uppercase text-sm tracking-widest">{{ match.tournament or 'LIGA PROFESIONAL' }}</h2><p class="text-slate-500 text-[10px] font-bold uppercase tracking-tighter">{{ match.date }}</p></div></header>
-        
-        <div class="flex h-auto ">
-            <div class="bg-slate-950/80 w-[70%] max-w-6xl p-8 rounded-[3rem] border border-slate-700/50  shadow-inner  mx-auto text-center">
-                <div class="flex justify-around items-center gap-8 mb-4 text-center">
-                    <h1 class="text-3xl font-black uppercase flex-1 tracking-tighter hover:text-sky-500 transition-colors">
-                        <a href="/team/{{ match.id_home_team }}">{{ match.home_team }}</a>
-                    </h1>                    
-                    <div class="px-8 py-3 bg-slate-900 rounded-3xl border-2 border-slate-800 text-4xl font-mono font-black text-white shadow-2xl">{{ match.score or 'VS' }}</div>
-                    <h1 class="text-3xl font-black uppercase flex-1 tracking-tighter hover:text-sky-500 transition-colors">
-                        <a href="/team/{{ match.id_away_team }}">{{ match.away_team }}</a>
-                    </h1>
-                </div>
-                <div class="border-t border-slate-800 pt-4 mt-2"><span class="text-[12px] font-bold text-slate-300 uppercase tracking-widest italic">arbitro: {%if match.referee %} <a href="/referee/{{ match.referee }}" class="hover:text-sky-500">{{ match.referee}}</a> {% else %} Por designar {% endif %}</span></div>
-            </div>
-            <!-- NOTAS -->
-            <div class="ml-4 mx-auto w-[35%]">
-                <form action="/save_match_note/{{ match.id }}" method="POST" class="bg-slate-900/40 p-6 rounded-[2.5rem] border border-slate-800/50 backdrop-blur-sm">
-                    <div class="flex justify-between items-center mb-3 px-2">
-                        <label class="text-[10px] font-black text-sky-500 uppercase tracking-[0.2em]">Notas Tacticas del Encuentro</label>
-                        <button type="submit" class="text-[9px] bg-sky-600/20 hover:bg-sky-600 text-sky-400 hover:text-white px-4 py-1 rounded-full font-black uppercase transition-all border border-sky-500/30">Actualizar Nota</button>
-                    </div>
-                    <textarea name="notes" placeholder="Escribe aqui el analisis post-partido o instrucciones previas..." 
-                        class="w-full bg-slate-950/50 border border-slate-800 rounded-2xl p-4 text-sm text-slate-300 outline-none focus:border-sky-500 h-28 resize-none shadow-inner transition-all">{{ m_note.notes if m_note else '' }}</textarea>
-                </form>
-            </div>
-        </div>
-
-        <div class="bg-slate-800/40 p-8 md:p-4 rounded-[4rem] border border-slate-700/50 grid md:grid-cols-4 gap-10 shadow-2xl items-start">
-            <div class="space-y-8">
-                <!-- BANCO LOCAL -->
-                <div class="space-y-3">
-                    <h4 class="text-[15px] font-black text-sky-400 uppercase italic mb-4 text-center tracking-widest border-b border-sky-400/20 pb-2">Banco Local</h4>
-                    <div class="grid grid-cols-2 gap-1.5">
-                        {% for p in home_subs %}
-                        <div class="bg-slate-900/50 p-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-800 transition-all list-item-hover-only" data-pid="{{ p.player_id }}" onmouseenter="highlightTarget('{{ p.player_id }}', true)" onmouseleave="highlightTarget('{{ p.player_id }}', false)" onclick="handlePlayerClick(event, '{{p.player_id}}')">
-                            <div class="flex justify-between items-center gap-1 w-full">
-                                <span class="font-bold truncate flex-1 text-[14px] text-slate-200">{{ p.player_name.split(' ').pop() }} <span class="text-slate-500 font-medium text-[11px]">({{ p.position }})</span></span>
-                                <span class="{% if p.minutes_played > 0 %}text-emerald-500{% else %}text-slate-700{% endif %} font-black text-[12px] whitespace-nowrap">{{ p.minutes_played }}'</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                <!-- RANKING LOCAL -->
-                <div class="space-y-3">
-                    <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
-                        <h4 class="text-[14px] font-black text-sky-400 uppercase italic tracking-widest mb-2">Rankings Local</h4>
-                        <div class="flex w-full justify-between mb-3">
-                            <button onclick="toggleL5('home', '{{ match.id_home_team }}')" id="h-l5-btn" class="text-[9px] px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
-                        </div>
-                        <div class="flex flex-wrap justify-center gap-1 mb-2">
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold h-rank-btn" id="h-btn-main">Tiros</button>
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'headers', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Cabezazos</button>
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'yellows', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Tarjetas</button>
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Faltas</button>
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Faltas Rec.</button>
-                        </div>
-                        <div id="home-sub-filters" class="sub-menu flex gap-1 justify-center" style="display:none;">
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)" id="home-sub-all" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-black h-sub-btn">Todos</button>
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'target', event)" id="home-sub-target" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black h-sub-btn">Arco</button>
-                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'long', event)" id="home-sub-long" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black h-sub-btn">Lejos</button>
-                        </div>
-                    </div>
-                    <div id="home-ranking-list" class="space-y-1"></div>
-                    <div class="flex justify-center gap-4 mt-2">
-                        <button onclick="changePage('home', -1)" class="text-sky-400 hover:text-white transition-colors"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg></button>
-                        <span id="home-page-info" class="text-[10px] font-black text-slate-500 uppercase mt-0.5">1 / 1</span>
-                        <button onclick="changePage('home', 1)" class="text-sky-400 hover:text-white transition-colors"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg></button>
-                    </div>
-                </div>
-            </div>
-            <!-- PITCH -->
-            <div class="md:col-span-2 relative flex flex-col items-center">
-                <h2 class="text-[15px] font-black text-slate-300 uppercase italic mb-4 text-center tracking-widest border-b border-slate-500/20 pb-2">{{ lineup_label }}</h2>
-                <div class="pitch" id="soccer-pitch">
-                    {% for p in home_lineup %}<div class="player-dot bg-blue-500 draggable shadow-lg" style="bottom:{{ (p.role_x * 50) }}%; left:{{(1-p.role_y)*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="home" data-teamid="{{match.id_home_team}}" onclick="handlePlayerClick(event)">{{p.position}}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name.split(' ').pop()}}</div></div>{% endfor %}
-                    {% for p in away_lineup %}<div class="player-dot bg-red-500 draggable shadow-lg" style="top:{{ (p.role_x * 50) }}%; left:{{p.role_y*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="away" data-teamid="{{match.id_away_team}}" onclick="handlePlayerClick(event)">{{p.position}}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name.split(' ').pop()}}</div></div>{% endfor %}
-                </div>
-                <div class="flex items-center gap-4 mt-4">
-                    <button id="lock-home-btn" onclick="toggleLock('home')" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">L</button>
-                    <button onclick="togglePitchOrientation()" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl transition-all flex items-center justify-center border border-slate-700 shadow-lg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg></button>
-                    <button id="lock-away-btn" onclick="toggleLock('away')" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">V</button>
-                </div>
-            </div>
-
-            <div class="space-y-8 text-right">
-                <!-- BANCO VISITA -->
-                <div class="space-y-3">
-                    <h4 class="text-[15px] font-black text-red-500 uppercase italic mb-4 text-center tracking-widest border-b border-red-500/20 pb-2">Banco Visita</h4>
-                    <div class="grid grid-cols-2 gap-1.5">
-                        {% for p in away_subs %}
-                        <div class="bg-slate-900/50 p-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-800 transition-all list-item-hover-only" data-pid="{{ p.player_id }}" onmouseenter="highlightTarget('{{ p.player_id }}', true)" onmouseleave="highlightTarget('{{ p.player_id }}', false)" onclick="handlePlayerClick(event, '{{p.player_id}}')">
-                            <div class="flex justify-between items-center gap-1 w-full flex-row-reverse">
-                                <span class="font-bold truncate flex-1 text-[14px] text-slate-200">{{ p.player_name.split(' ').pop() }} <span class="text-slate-500 font-medium text-[11px]">({{ p.position }})</span></span>
-                                <span class="{% if p.minutes_played > 0 %}text-emerald-500{% else %}text-slate-700{% endif %} font-black text-[12px] whitespace-nowrap">{{ p.minutes_played }}'</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                <!-- RANKING VISITA -->
-                <div class="space-y-3">
-                    <div class="flex flex-col items-center border-b border-red-500/20 pb-2 mb-3">
-                        <h4 class="text-[14px] font-black text-red-500 uppercase italic tracking-widest mb-3">Rankings Visita</h4>
-                        <div class="flex w-full justify-between mb-3">
-                            <button onclick="toggleL5('away', '{{ match.id_away_team }}')" id="v-l5-btn" class="text-[9px] px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
-                        </div>
-                        <div class="flex flex-wrap justify-center gap-1 mb-2">
-                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold v-rank-btn">Tiros</button>
-                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'headers', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Cabezazos</button>
-                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'yellows', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Tarjetas</button>
-                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Faltas</button>
-                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls_rec', 'all', event)" class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Faltas Rec.</button>
-                        </div>
-                        <div id="away-sub-filters" class="sub-menu flex gap-1 justify-center">
-                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)" id="away-sub-all" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500 text-white font-black v-sub-btn">Todos</button>
-                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'target', event)" id="away-sub-target" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black v-sub-btn">Arco</button>
-                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'long', event)" id="away-sub-long" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black v-sub-btn">Lejos</button>
-                        </div>
-                    </div>
-                    <div id="away-ranking-list" class="space-y-1"></div>
-                    <div class="flex justify-center gap-4 mt-2">
-                        <button onclick="changePage('away', -1)" class="text-sky-400 hover:text-white transition-colors"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg></button>
-                        <span id="away-page-info" class="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-0.5">1 / 1</span>
-                        <button onclick="changePage('away', 1)" class="text-sky-400 hover:text-white transition-colors"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg></button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-
-        <!-- PANEL DE PREDICCIONES -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="prediction-section">
-            {% macro get_score_color(val) %}{% if val <= 30 %}text-red-500{% elif val <= 70 %}text-blue-500{% else %}text-green-500{% endif %}{% endmacro %}
-            {% macro get_pos_color(val) %}{% if val > 20 %}text-red-500{% elif val > 10 %}text-blue-500{% else %}text-green-500{% endif %}{% endmacro %}
-            {% for cat, data, label in [
-                ('shots', pred_s, 'Puntuacion de Tiros'),
-                ('headers', pred_h, 'Puntuacion de Cabezazos'),
-                ('cards', pred_c, 'Puntuacion de Tarjetas'),
-                ('fouls', pred_f, 'Puntuacion de Faltas')
-            ] %}
-            <div class="bg-slate-800/60 p-5 rounded-[2.5rem] border border-slate-700 shadow-xl">
-                <!--PREDICCION -->
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="font-black text-sky-400 uppercase tracking-tighter text-[16px] italic leading-tight">{{ label }}</h3>
-                    {% if cat == 'shots' %}
-                    <div class="flex gap-1 shrink-0">
-                        <button onclick="updatePredictions('all')" id="pred-filter-all" class="pred-filter-btn text-[9px] px-2 py-1 rounded-md uppercase font-bold border border-slate-700 bg-sky-500 text-white">Todos</button>
-                        <button onclick="updatePredictions('target')" id="pred-filter-target" class="pred-filter-btn text-[9px] px-2 py-1 rounded-md uppercase font-bold border border-slate-700 text-slate-500 hover:text-white">Arco</button>
-                        <button onclick="updatePredictions('long')" id="pred-filter-long" class="pred-filter-btn text-[9px] px-2 py-1 rounded-md uppercase font-bold border border-slate-700 text-slate-500 hover:text-white">Lejos</button>
-                    </div>
-                    {% endif %}
-                </div>
-                <div class="space-y-6">
-                    <div class="grid grid-cols-2 gap-3">
-                        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center">
-                            <div class="text-[12px] font-bold text-slate-500 uppercase">Local</div>
-                            <div class="text-3xl font-black {{ get_score_color(data.h) }}" id="val-{{ cat }}-h">{{ data.h }}</div>
-                        </div>
-                        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center">
-                            <div class="text-[12px] font-bold text-slate-500 uppercase">Visita</div>
-                            <div class="text-3xl font-black {{ get_score_color(data.v) }}" id="val-{{ cat }}-v">{{ data.v }}</div>
-                        </div>
-                    </div>
-                    <div class="bg-sky-600/10 p-5 rounded-2xl border border-sky-500/30 text-center">
-                        <div class="text-[12px] font-black text-sky-500 uppercase tracking-widest opacity-60">General</div>
-                        <div class="text-5xl font-black {{ get_score_color(data.gen) }}" id="val-{{ cat }}-gen">{{ data.gen }}</div>
-                    </div>
-                    
-                    <div class="space-y-2 pt-4 border-t border-slate-700/50">
-                        <div class="flex justify-between items-center bg-slate-950/50 p-2 rounded-lg border border-slate-800">
-                            {% set tag_h = 'Realz' if cat in ['shots', 'headers'] else 'Recib' if cat in ['cards'] else 'Comet' %}
-                            {% set tag_v = 'Recib' if cat in ['shots', 'headers'] else 'Gener' if cat in ['cards'] else 'Recib' %}
-                            <span class="text-[11px] text-slate-400 font-black uppercase">L {{tag_h}} <span id="rank-{{cat}}-rmh" class="{{ get_pos_color(data.rm_h) }}">#{{data.rm_h}}</span></span>
-                            <span class="text-[11px] text-slate-400 font-black uppercase text-right">V {{tag_v}} <span id="rank-{{cat}}-rav" class="{{ get_pos_color(data.ra_v) }}">#{{data.ra_v}}</span></span>
-                        </div>
-                        <div class="flex justify-between items-center bg-slate-950/50 p-2 rounded-lg border border-slate-800">
-                             <span class="text-[11px] text-slate-400 font-black uppercase" >L {{tag_v}} <span id="rank-{{cat}}-rah"class="{{ get_pos_color(data.ra_h) }}">#{{data.ra_h}}</span></span>
-                             <span class="text-[11px] text-slate-400 font-black uppercase text-right">V {{tag_h}} <span id="rank-{{cat}}-rmv" class="{{ get_pos_color(data.rm_v) }}">#{{data.rm_v}}</span></span>
-                        </div>
-                        {% if data.ref_rank %}
-                        <div class="bg-slate-900 p-2 rounded-lg border border-sky-900/20 text-center">
-                            <span class="text-[11px] text-sky-500 font-black uppercase italic" id="rank-{{cat}}-refrank">arbitro <span class="{{ get_pos_color(data.ref_rank) }}">#{{data.ref_rank}}</span> en {{'Tarjetas' if cat=='cards' else 'Faltas'}}</span>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    '''+FOOTER_HTML+'''
-
-    <script>
+        <script>
         const pitch = document.getElementById('soccer-pitch');
         const draggables = document.querySelectorAll('.draggable');
         const contextMenu = document.getElementById('context-menu');
@@ -2003,6 +1904,7 @@ DETAIL_HTML = '''
         const rankingsData = { home: [], away: [] }, currentPages = { home: 1, away: 1 }, perPage = 10;
         const locks = { home: false, away: false };
         const l5_active = { home: false, away: false };
+        const match_focus = { home: false, away: false };
 
         function getScoreColorClass(v) { if (v <= 30) return 'text-red-500'; if (v <= 70) return 'text-blue-500'; return 'text-green-500'; }
         function getPosColorClass(v) { if (v > 20) return 'text-red-500'; if (v > 10) return 'text-blue-500'; return 'text-green-500'; }
@@ -2015,19 +1917,55 @@ DETAIL_HTML = '''
             });
         }
         
-        function toggleL5(side, teamId) {
+        function toggleRankingL5(side, teamId) {
+            // Si estaba en modo 'partido', desactivamos ese visualmente y pasamos a L5
             l5_active[side] = !l5_active[side];
-            const btn = document.getElementById(`${side === 'home' ? 'h' : 'v'}-l5-btn`);
-            btn.classList.toggle('bg-sky-500', l5_active[side]);
-            btn.classList.toggle('text-white', l5_active[side]);
-            btn.classList.toggle('text-slate-500', !l5_active[side]);
             
-            // Re-cargar ranking actual con el nuevo filtro
-            const activeMain = document.querySelector(`.${side === 'home' ? 'h' : 'v'}-rank-btn.bg-sky-500`);
-            const type = activeMain ? activeMain.innerText.toLowerCase().replace('.', '') : 'tiradores';
-            const finalType = type.includes('tiro') ? 'tiradores' : type.includes('cabeza') ? 'headers' : type.includes('tarj') ? 'yellows' : type.includes('faltas') ? 'fouls' : 'fouls_rec';
-            updateTeamRanking(side, teamId, finalType, 'all', null);
+            // Si activamos L5, desactivamos el modo Partido
+            if (l5_active[side]) match_focus[side] = false;
+
+            const btnL5 = document.getElementById(`${side === 'home' ? 'h' : 'v'}-l5-btn`);
+            const btnPart = document.getElementById(`${side === 'home' ? 'h' : 'v'}-part-btn`);
+            
+            // Resetear el otro boton
+            if (l5_active[side]) {
+                btnPart.classList.remove('bg-sky-500', 'text-white');
+                btnPart.classList.add('text-slate-500');
+            }
+
+            btnL5.classList.toggle('bg-sky-500', l5_active[side]);
+            btnL5.classList.toggle('text-white', l5_active[side]);
+            btnL5.classList.toggle('text-slate-500', !l5_active[side]);
+            
+            refreshCurrentRanking(side, teamId);
         }
+
+        function toggleRankingMatch(side, teamId) {
+            match_focus[side] = !match_focus[side];
+            
+            // Si activamos "Partido", desactivamos "L5"
+            if (match_focus[side]) l5_active[side] = false;
+
+            // Actualizar UI de botones
+            const btnPart = document.getElementById(`${side === 'home' ? 'h' : 'v'}-part-btn`);
+            const btnL5 = document.getElementById(`${side === 'home' ? 'h' : 'v'}-l5-btn`);
+            
+            btnPart.classList.toggle('bg-sky-500', match_focus[side]);
+            btnPart.classList.toggle('text-white', match_focus[side]);
+            
+            btnL5.classList.remove('bg-sky-500', 'text-white');
+            btnL5.classList.add('text-slate-500');
+
+            refreshCurrentRanking(side, teamId);
+        }
+
+        function refreshCurrentRanking(side, teamId) {
+            const sideCode = side === 'home' ? 'h' : 'v';
+            const activeMain = document.querySelector(`.${sideCode}-rank-btn.bg-sky-500`);
+            const type = activeMain ? activeMain.getAttribute('data-type') : 'tiradores';
+            updateTeamRanking(side, teamId, type, 'all', null);
+        }
+
 
         function togglePitchOrientation() {
             pitchIsReversed = !pitchIsReversed;
@@ -2082,10 +2020,34 @@ DETAIL_HTML = '''
                 e.currentTarget.classList.remove('bg-slate-800', 'text-slate-400', 'text-slate-500');
             }
             const subMenu = document.getElementById(`${side}-sub-filters`);
-            if (rankType === 'tiradores') { subMenu.style.display = 'flex'; } else { subMenu.style.display = 'none'; }
+            if (rankType === 'tiradores') { 
+                subMenu.style.display = 'flex';
+
+                // Actualizar estado visual de sub-filtros
+                const subBtns = subMenu.querySelectorAll('button');
+                subBtns.forEach(b => {
+                    const type = b.id.split('-').pop(); // all, target, long
+                    if (type === shotFilter) {
+                        b.classList.remove('bg-slate-800', 'text-slate-500');
+                        b.classList.add('bg-sky-500', 'text-white');
+                    } else {
+                        b.classList.add('bg-slate-800', 'text-slate-500');
+                        b.classList.remove('bg-sky-500', 'text-white');
+                    }
+                });
+            } else { 
+                subMenu.style.display = 'none'; 
+            }
             
-            const limit = l5_active[side] ? 5 : null;
-            fetch(`/api/team_ranking/${teamId}?type=${rankType}&filter=${shotFilter}&limit=${limit || ''}`).then(r => r.json()).then(data => { 
+            let url = `/api/team_ranking/${teamId}?type=${rankType}&filter=${shotFilter}`;
+            
+            if (match_focus[side]) {
+                url += `&match_id={{ match.id }}`; // Pasamos el ID del partido actual
+            } else if (l5_active[side]) {
+                url += `&limit=5`;
+            }
+
+            fetch(url).then(r => r.json()).then(data => { 
                 rankingsData[side] = data; 
                 currentPages[side] = 1; 
                 renderRankingPage(side); 
@@ -2290,8 +2252,280 @@ DETAIL_HTML = '''
         });
         document.addEventListener('mouseup', () => { isLassoing=false; selectionBox.style.display='none'; if(activePlayer) selectedPlayers.forEach(p => p.style.transition = ''); activePlayer=null; });
     </script>
-</body></html>
-'''
+
+    <div id="modal-overlay" onclick="if(event.target==this) closeModal()"><div id="player-modal"><div id="modal-content"></div></div></div>
+    
+    <div id="subst-modal-overlay" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-[4000] flex items-center justify-center" onclick="if(event.target==this) closeSubstModal()">
+        <div class="bg-slate-900 border border-slate-700 w-full max-w-md p-8 rounded-[2rem] shadow-2xl">
+            <h3 class="text-xl font-black uppercase text-white mb-4 italic tracking-tighter">Sustitucion Tactica</h3>
+            <input type="text" id="subst-search" autocomplete="off" oninput="searchPlayers(this.value)" placeholder="Ingresa nombre o ID..." class="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl outline-none focus:border-sky-500 text-white text-sm mb-4">
+            <div id="subst-results" class="space-y-2 max-h-60 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <div id="selection-box"></div>
+    <div id="context-menu">
+        <div class="context-header" id="ctx-player-name">Jugador</div>
+        <div class="context-item" onclick="handleCtxAction('profile')">📊 Ver Perfil</div>
+        <div class="context-item" onclick="handleCtxAction('replace')">🔄 Reemplazar Jugador</div>
+        <div class="context-item" onclick="handleCtxAction('key')" id="ctx-key-label">⭐ Marcar como Clave</div>
+    </div>
+
+    <div class="max-w-[1600px] space-y-8 mx-auto">
+        <header class="flex justify-between items-center"><a href="/" class="bg-slate-800 px-6 py-2 rounded-xl font-bold border border-slate-700 hover:bg-slate-700 transition flex items-center gap-2"><span>←</span> INICIO</a><div class="text-right"><h2 class="text-sky-500 font-black italic uppercase text-sm tracking-widest">{{ match.tournament or 'LIGA PROFESIONAL' }}</h2><p class="text-slate-500 text-[10px] font-bold uppercase tracking-tighter">{{ match.date }}</p></div></header>
+        
+        <div class="flex h-auto ">
+            <div class="bg-slate-950/80 w-[70%] max-w-6xl p-8 rounded-[3rem] border border-slate-700/50  shadow-inner  mx-auto text-center">
+                <div class="flex justify-around items-center gap-8 mb-4 text-center">
+                    <h1 class="text-3xl font-black uppercase flex-1 tracking-tighter hover:text-sky-500 transition-colors">
+                        <a href="/team/{{ match.id_home_team }}">{{ match.home_team }}</a>
+                    </h1>                    
+                    <div class="px-8 py-3 bg-slate-900 rounded-3xl border-2 border-slate-800 text-4xl font-mono font-black text-white shadow-2xl">{{ match.score or 'VS' }}</div>
+                    <h1 class="text-3xl font-black uppercase flex-1 tracking-tighter hover:text-sky-500 transition-colors">
+                        <a href="/team/{{ match.id_away_team }}">{{ match.away_team }}</a>
+                    </h1>
+                </div>
+                <div class="border-t border-slate-800 pt-4 mt-2"><span class="text-[12px] font-bold text-slate-300 uppercase tracking-widest italic">arbitro: {%if match.referee %} <a href="/referee/{{ match.referee }}" class="hover:text-sky-500">{{ match.referee}}</a> {% else %} Por designar {% endif %}</span></div>
+            </div>
+            <!-- NOTAS -->
+            <div class="ml-4 mx-auto w-[35%]">
+                <form action="/save_match_note/{{ match.id }}" method="POST" class="bg-slate-900/40 p-6 rounded-[2.5rem] border border-slate-800/50 backdrop-blur-sm">
+                    <div class="flex justify-between items-center mb-3 px-2">
+                        <label class="text-[10px] font-black text-sky-500 uppercase tracking-[0.2em]">Notas Tacticas del Encuentro</label>
+                        <button type="submit" class="text-[9px] bg-sky-600/20 hover:bg-sky-600 text-sky-400 hover:text-white px-4 py-1 rounded-full font-black uppercase transition-all border border-sky-500/30">Actualizar Nota</button>
+                    </div>
+                    <textarea name="notes" placeholder="Escribe aqui el analisis post-partido o instrucciones previas..." 
+                        class="w-full bg-slate-950/50 border border-slate-800 rounded-2xl p-4 text-sm text-slate-300 outline-none focus:border-sky-500 h-28 resize-none shadow-inner transition-all">{{ m_note.notes if m_note else '' }}</textarea>
+                </form>
+            </div>
+        </div>
+
+        <div class="bg-slate-800/40 p-8 md:p-4 rounded-[4rem] border border-slate-700/50 grid md:grid-cols-4 gap-10 shadow-2xl items-start">
+            <div class="space-y-8">
+                <!-- BANCO LOCAL -->
+                <div class="space-y-3">
+                    <h4 class="text-[15px] font-black text-sky-400 uppercase italic mb-4 text-center tracking-widest border-b border-sky-400/20 pb-2">Banco Local</h4>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        {% for p in home_subs %}
+                        <div class="bg-slate-900/50 p-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-800 transition-all list-item-hover-only" data-pid="{{ p.player_id }}" onmouseenter="highlightTarget('{{ p.player_id }}', true)" onmouseleave="highlightTarget('{{ p.player_id }}', false)" onclick="handlePlayerClick(event, '{{p.player_id}}')">
+                            <div class="flex justify-between items-center gap-1 w-full">
+                                <span class="font-bold truncate flex-1 text-[14px] text-slate-200">{{ p.player_name.split(' ').pop() }} <span class="text-slate-500 font-medium text-[11px]">({{ p.position }})</span></span>
+                                <span class="{% if p.minutes_played > 0 %}text-emerald-500{% else %}text-slate-700{% endif %} font-black text-[12px] whitespace-nowrap">{{ p.minutes_played }}'</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <!-- RANKING LOCAL -->
+                <div class="space-y-3">
+                    <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
+                        <h4 class="text-[14px] font-black text-sky-400 uppercase italic tracking-widest mb-3">Rankings Local</h4>
+                        <div class="flex w-full justify-between mb-3 text-[9px]">
+                            <button onclick="toggleRankingL5('home', '{{ match.id_home_team }}')" id="h-l5-btn" class="px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
+                            <button onclick="toggleRankingMatch('home', '{{ match.id_home_team }}')" id="h-part-btn" class="px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Partido</button>
+                        </div>
+                        <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px]">
+                            <button data-type="tiradores" onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold h-rank-btn">Tiros</button>
+                            <button data-type="headers" onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'headers', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Cabezazos</button>
+                            <button data-type="yellows" onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'yellows', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Tarjetas</button>
+                            <button data-type="fouls" onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Faltas</button>
+                            <button data-type="fouls_rec" onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls_rec', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold h-rank-btn">Faltas Rec.</button>
+                        </div>
+                        <div id="home-sub-filters" class="sub-menu flex gap-1 justify-center text-[11px]" style="display:none;">
+                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)" id="home-sub-all" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-black h-sub-btn">Todos</button>
+                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'target', event)" id="home-sub-target" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black h-sub-btn">Arco</button>
+                            <button onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'long', event)" id="home-sub-long" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black h-sub-btn">Lejos</button>
+                        </div>
+                    </div>
+                    <div id="home-ranking-list" class="space-y-1"></div>
+                    <div class="flex justify-center gap-4 mt-2">
+                        <button onclick="changePage('home', -1)" class="text-sky-400 hover:text-white transition-colors"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg></button>
+                        <span id="home-page-info" class="text-[10px] font-black text-slate-500 uppercase mt-0.5">1 / 1</span>
+                        <button onclick="changePage('home', 1)" class="text-sky-400 hover:text-white transition-colors"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg></button>
+                    </div>
+                </div>
+            </div>
+            <!-- PITCH -->
+            <div class="md:col-span-2 relative flex flex-col items-center">
+                <h2 class="text-[15px] font-black text-slate-300 uppercase italic mb-4 text-center tracking-widest border-b border-slate-500/20 pb-2">{{ lineup_label }}</h2>
+                <div class="pitch" id="soccer-pitch">
+                    {% for p in home_lineup %}<div class="player-dot bg-blue-500 draggable shadow-lg" style="bottom:{{ (p.role_x * 50) }}%; left:{{(1-p.role_y)*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="home" data-teamid="{{match.id_home_team}}" onclick="handlePlayerClick(event)">{{p.position}}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name.split(' ').pop()}}</div></div>{% endfor %}
+                    {% for p in away_lineup %}<div class="player-dot bg-red-500 draggable shadow-lg" style="top:{{ (p.role_x * 50) }}%; left:{{p.role_y*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="away" data-teamid="{{match.id_away_team}}" onclick="handlePlayerClick(event)">{{p.position}}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name.split(' ').pop()}}</div></div>{% endfor %}
+                </div>
+                <div class="flex items-center gap-4 mt-4">
+                    <button id="lock-home-btn" onclick="toggleLock('home')" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">L</button>
+                    <button onclick="togglePitchOrientation()" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl transition-all flex items-center justify-center border border-slate-700 shadow-lg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg></button>
+                    <button id="lock-away-btn" onclick="toggleLock('away')" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">V</button>
+                </div>
+            </div>
+
+            <div class="space-y-8 text-right">
+                <!-- BANCO VISITA -->
+                <div class="space-y-3">
+                    <h4 class="text-[15px] font-black text-red-500 uppercase italic mb-4 text-center tracking-widest border-b border-red-500/20 pb-2">Banco Visita</h4>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        {% for p in away_subs %}
+                        <div class="bg-slate-900/50 p-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-800 transition-all list-item-hover-only" data-pid="{{ p.player_id }}" onmouseenter="highlightTarget('{{ p.player_id }}', true)" onmouseleave="highlightTarget('{{ p.player_id }}', false)" onclick="handlePlayerClick(event, '{{p.player_id}}')">
+                            <div class="flex justify-between items-center gap-1 w-full flex-row-reverse">
+                                <span class="font-bold truncate flex-1 text-[14px] text-slate-200">{{ p.player_name.split(' ').pop() }} <span class="text-slate-500 font-medium text-[11px]">({{ p.position }})</span></span>
+                                <span class="{% if p.minutes_played > 0 %}text-emerald-500{% else %}text-slate-700{% endif %} font-black text-[12px] whitespace-nowrap">{{ p.minutes_played }}'</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <!-- RANKING VISITA -->
+                <div class="space-y-3">
+                    <div class="flex flex-col items-center border-b border-red-500/20 pb-2 mb-3">
+                        <h4 class="text-[14px] font-black text-red-500 uppercase italic tracking-widest mb-3">Rankings Visita</h4>
+                        <div class="flex w-full justify-between mb-3 text-[9px]">
+                            <button onclick="toggleRankingL5('away', '{{ match.id_away_team }}')" id="v-l5-btn" class="px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
+                            <button onclick="toggleRankingMatch('away', '{{ match.id_away_team }}')" id="v-part-btn" class="px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Partido</button>
+                        </div>
+                        <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px]">
+                            <button data-type="tiradores" onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold v-rank-btn">Tiros</button>
+                            <button data-type="headers" onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'headers', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Cabezazos</button>
+                            <button data-type="yellows" onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'yellows', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Tarjetas</button>
+                            <button data-type="fouls" onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Faltas</button>
+                            <button data-type="fouls_rec" onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls_rec', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold v-rank-btn">Faltas Rec.</button>
+                        </div>
+                        <div id="away-sub-filters" class="sub-menu flex gap-1 justify-center text-[12px]">
+                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)" id="away-sub-all" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-black v-sub-btn">Todos</button>
+                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'target', event)" id="away-sub-target" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black v-sub-btn">Arco</button>
+                            <button onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'long', event)" id="away-sub-long" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black v-sub-btn">Lejos</button>
+                        </div>
+                    </div>
+                    <div id="away-ranking-list" class="space-y-1"></div>
+                    <div class="flex justify-center gap-4 mt-2">
+                        <button onclick="changePage('away', -1)" class="text-sky-400 hover:text-white transition-colors"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg></button>
+                        <span id="away-page-info" class="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-0.5">1 / 1</span>
+                        <button onclick="changePage('away', 1)" class="text-sky-400 hover:text-white transition-colors"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- PANEL DE PREDICCIONES -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="prediction-section">
+            {% macro get_score_color(val) %}{% if val <= 30 %}text-red-500{% elif val <= 70 %}text-blue-500{% else %}text-green-500{% endif %}{% endmacro %}
+            {% macro get_pos_color(val) %}{% if val > 20 %}text-red-500{% elif val > 10 %}text-blue-500{% else %}text-green-500{% endif %}{% endmacro %}
+            {% for cat, data, label in [
+                ('shots', pred_s, 'Puntuacion de Tiros'),
+                ('headers', pred_h, 'Puntuacion de Cabezazos'),
+                ('cards', pred_c, 'Puntuacion de Tarjetas'),
+                ('fouls', pred_f, 'Puntuacion de Faltas')
+            ] %}
+            <div class="bg-slate-800/60 p-5 rounded-[2.5rem] border border-slate-700 shadow-xl">
+                <!--PREDICCION -->
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-black text-sky-400 uppercase tracking-tighter text-[16px] italic leading-tight">{{ label }}</h3>
+                    {% if cat == 'shots' %}
+                    <div class="flex gap-1 shrink-0">
+                        <button onclick="updatePredictions('all')" id="pred-filter-all" class="pred-filter-btn text-[9px] px-2 py-1 rounded-md uppercase font-bold border border-slate-700 bg-sky-500 text-white">Todos</button>
+                        <button onclick="updatePredictions('target')" id="pred-filter-target" class="pred-filter-btn text-[9px] px-2 py-1 rounded-md uppercase font-bold border border-slate-700 text-slate-500 hover:text-white">Arco</button>
+                        <button onclick="updatePredictions('long')" id="pred-filter-long" class="pred-filter-btn text-[9px] px-2 py-1 rounded-md uppercase font-bold border border-slate-700 text-slate-500 hover:text-white">Lejos</button>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="space-y-6">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center">
+                            <div class="text-[12px] font-bold text-slate-500 uppercase">Local</div>
+                            <div class="text-3xl font-black {{ get_score_color(data.h) }}" id="val-{{ cat }}-h">{{ data.h }}</div>
+                        </div>
+                        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-center">
+                            <div class="text-[12px] font-bold text-slate-500 uppercase">Visita</div>
+                            <div class="text-3xl font-black {{ get_score_color(data.v) }}" id="val-{{ cat }}-v">{{ data.v }}</div>
+                        </div>
+                    </div>
+                    <div class="bg-sky-600/10 p-5 rounded-2xl border border-sky-500/30 text-center">
+                        <div class="text-[12px] font-black text-sky-500 uppercase tracking-widest opacity-60">General</div>
+                        <div class="text-5xl font-black {{ get_score_color(data.gen) }}" id="val-{{ cat }}-gen">{{ data.gen }}</div>
+                    </div>
+                    
+                    <div class="space-y-2 pt-4 border-t border-slate-700/50">
+                        <div class="flex justify-between items-center bg-slate-950/50 p-2 rounded-lg border border-slate-800">
+                            {% set tag_h = 'Realz' if cat in ['shots', 'headers'] else 'Recib' if cat in ['cards'] else 'Comet' %}
+                            {% set tag_v = 'Recib' if cat in ['shots', 'headers'] else 'Gener' if cat in ['cards'] else 'Recib' %}
+                            <span class="text-[11px] text-slate-400 font-black uppercase">L {{tag_h}} <span id="rank-{{cat}}-rmh" class="{{ get_pos_color(data.rm_h) }}">#{{data.rm_h}}</span></span>
+                            <span class="text-[11px] text-slate-400 font-black uppercase text-right">V {{tag_v}} <span id="rank-{{cat}}-rav" class="{{ get_pos_color(data.ra_v) }}">#{{data.ra_v}}</span></span>
+                        </div>
+                        <div class="flex justify-between items-center bg-slate-950/50 p-2 rounded-lg border border-slate-800">
+                             <span class="text-[11px] text-slate-400 font-black uppercase" >L {{tag_v}} <span id="rank-{{cat}}-rah"class="{{ get_pos_color(data.ra_h) }}">#{{data.ra_h}}</span></span>
+                             <span class="text-[11px] text-slate-400 font-black uppercase text-right">V {{tag_h}} <span id="rank-{{cat}}-rmv" class="{{ get_pos_color(data.rm_v) }}">#{{data.rm_v}}</span></span>
+                        </div>
+                        {% if data.ref_rank %}
+                        <div class="bg-slate-900 p-2 rounded-lg border border-sky-900/20 text-center">
+                            <span class="text-[11px] text-sky-500 font-black uppercase italic" id="rank-{{cat}}-refrank">arbitro <span class="{{ get_pos_color(data.ref_rank) }}">#{{data.ref_rank}}</span> en {{'Tarjetas' if cat=='cards' else 'Faltas'}}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- HISTORIAL Y ARBITRO -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-12">
+            <!-- H2H -->
+            <div class="bg-slate-800/40 p-6 rounded-[2.5rem] text-[15px] border border-slate-700/50 shadow-xl">
+                <h3 class="font-black text-sky-400 uppercase italic tracking-widest mb-6 border-l-4 border-sky-500 pl-4">Historial Entre Ambos</h3>
+                <div class="space-y-3">
+                    {% for h in h2h_matches %}
+                    <a href="/match/{{ h.id }}" class="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-800 hover:border-sky-500 transition-all group">
+                        <div class="flex flex-col">
+                            <span class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1">{{ h.date[:10] }} | {{ h.tournament }}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-slate-300 {{ 'text-sky-400' if h.id_home_team|string == match.id_home_team|string else '' }}">{{ h.home_team }}</span>
+                                <span class="bg-slate-800 px-2 py-0.5 rounded font-mono font-black text-white border border-slate-700">{{ h.score }}</span>
+                                <span class="font-bold text-slate-300 {{ 'text-sky-400' if h.id_away_team|string == match.id_home_team|string else '' }}">{{ h.away_team }}</span>
+                            </div>
+                        </div>
+                        <span class="text-sky-500 opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                    </a>
+                    {% else %}
+                    <p class="text-slate-500 text-xs italic text-center py-4">No se encontraron enfrentamientos previos recientes.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- HISTORIAL ARBITRO -->
+            <div class="bg-slate-800/40 p-6 rounded-[2.5rem] text-[15px] border border-slate-700/50 shadow-xl">
+                <h3 class="font-black text-yellow-500 uppercase italic tracking-widest mb-6 border-l-4 border-yellow-500 pl-4">Historial del Arbitro</h3>
+                <div class="space-y-3">
+                    {% for r in ref_history %}
+                    <div class="bg-slate-900/50 p-4 rounded-2xl border border-slate-800">
+                        <a href="/match/{{ r.match_id }}">
+                            <div class="flex justify-between font-black text-slate-500 text-[12px] uppercase mb-3">
+                                <span>{{ r.date[:10] }}</span>
+                                <span>{{ r.tournament }}</span>
+                            </div>
+                            <div class="grid grid-cols-3 items-center gap-2 mb-3">
+                                <span class=" font-bold text-center truncate {{ 'text-sky-400' if r.id_home_team|string == match.id_home_team|string or r.id_home_team|string == match.id_away_team|string else '' }}">{{ r.home_team }}</span>
+                                <span class="bg-slate-800 py-1 rounded-lg font-mono font-black text-center text-white text-[16px]">{{ r.score or 'VS' }}</span>
+                                <span class="font-bold text-center truncate {{ 'text-sky-400' if r.id_away_team|string == match.id_home_team|string or r.id_away_team|string == match.id_away_team|string else '' }}">{{ r.away_team }}</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                                <div class="text-center">
+                                    <p class="text-[11px] font-black text-slate-500 uppercase">Local</p>
+                                    <p class="text-[13px] font-bold"><span class="text-yellow-500">{{ r.stats.h_cards }} Tarj.</span> | <span class="text-sky-400">{{ r.stats.h_fouls }} Faltas</span></p>
+                                </div>
+                                <div class="text-center">
+                                    <p class="text-[11px] font-black text-slate-500 uppercase">Visita</p>
+                                    <p class="text-[13px] font-bold"><span class="text-yellow-500">{{ r.stats.v_cards }} Tarj.</span> | <span class="text-sky-400">{{ r.stats.v_fouls }} Faltas</span></p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    {% else %}
+                    <p class="text-slate-500 text-xs italic text-center py-4">No hay registros recientes de este arbitro con estos equipos.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    '''+FOOTER_HTML+'''</body></html>'''
 
 if __name__ == '__main__':
     init_notes_table()

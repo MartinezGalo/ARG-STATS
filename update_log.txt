@@ -134,3 +134,34 @@
 2026-01-27 03:40:07 - INFO - Partido 5101899: Info actualizada (Pendiente).
 2026-01-27 03:40:10 - INFO - Partido 5101907: Info actualizada (Pendiente).
 2026-01-27 03:40:12 - INFO - --- Fin del ciclo de actualizacion ---
+2026-01-27 13:52:24 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 2 y 3) ---
+2026-01-27 13:52:25 - INFO - Partido 5101920: Info actualizada (Pendiente).
+2026-01-27 13:52:28 - INFO - Partido 5101916: Info actualizada (Pendiente).
+2026-01-27 13:52:31 - INFO - Partido 5101910: Info actualizada (Pendiente).
+2026-01-27 13:52:34 - INFO - Partido 5101921: Info actualizada (Pendiente).
+2026-01-27 13:52:36 - INFO - Partido 5101912: Info actualizada (Pendiente).
+2026-01-27 13:52:39 - INFO - Partido 5101913: Info actualizada (Pendiente).
+2026-01-27 13:52:42 - INFO - Partido 5101919: Info actualizada (Pendiente).
+2026-01-27 13:52:45 - INFO - Partido 5101914: Info actualizada (Pendiente).
+2026-01-27 13:52:48 - INFO - Partido 5101915: Info actualizada (Pendiente).
+2026-01-27 13:52:51 - INFO - Partido 5101922: Info actualizada (Pendiente).
+2026-01-27 13:52:54 - INFO - Partido 5101909: Info actualizada (Pendiente).
+2026-01-27 13:52:57 - INFO - Partido 5101923: Info actualizada (Pendiente).
+2026-01-27 13:53:00 - INFO - Partido 5101911: Info actualizada (Pendiente).
+2026-01-27 13:53:02 - INFO - Partido 5101917: Info actualizada (Pendiente).
+2026-01-27 13:53:05 - INFO - Partido 5101918: Info actualizada (Pendiente).
+2026-01-27 13:53:08 - INFO - Partido 5101908: Info actualizada (Pendiente).
+2026-01-27 13:53:11 - INFO - Partido 5101900: Info actualizada (Pendiente).
+2026-01-27 13:53:13 - INFO - Partido 5101901: Info actualizada (Pendiente).
+2026-01-27 13:53:16 - INFO - Partido 5101895: Info actualizada (Pendiente).
+2026-01-27 13:53:19 - INFO - Partido 5101903: Info actualizada (Pendiente).
+2026-01-27 13:53:22 - INFO - Partido 5101894: Info actualizada (Pendiente).
+2026-01-27 13:53:25 - INFO - Partido 5101905: Info actualizada (Pendiente).
+2026-01-27 13:53:28 - INFO - Partido 5101906: Info actualizada (Pendiente).
+2026-01-27 13:53:31 - INFO - Partido 5101898: Info actualizada (Pendiente).
+2026-01-27 13:53:33 - INFO - Partido 5101897: Info actualizada (Pendiente).
+2026-01-27 13:53:36 - INFO - Partido 5101896: Info actualizada (Pendiente).
+2026-01-27 13:53:39 - INFO - Partido 5101902: Info actualizada (Pendiente).
+2026-01-27 13:53:42 - INFO - Partido 5101899: Info actualizada (Pendiente).
+2026-01-27 13:53:45 - INFO - Partido 5101907: Info actualizada (Pendiente).
+2026-01-27 13:53:46 - INFO - --- Fin del ciclo de actualizacion ---

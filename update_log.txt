@@ -226,3 +226,84 @@
 2026-01-27 18:55:24 - INFO - Partido 5115904: Info actualizada (Pendiente).
 2026-01-27 18:55:27 - INFO - Partido 5115905: Info actualizada (Pendiente).
 2026-01-27 18:55:29 - INFO - --- Fin del ciclo de actualizacion ---
+2026-01-28 13:52:39 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 2 y 3) ---
+2026-01-28 13:52:41 - INFO - Partido 5115913: Info actualizada (Pendiente).
+2026-01-28 13:52:44 - INFO - Partido 5115906: Info actualizada (Pendiente).
+2026-01-28 13:52:47 - INFO - Partido 5115907: Info actualizada (Pendiente).
+2026-01-28 13:52:50 - INFO - Partido 5115908: Info actualizada (Pendiente).
+2026-01-28 13:52:53 - INFO - Partido 5115909: Info actualizada (Pendiente).
+2026-01-28 13:52:56 - INFO - Partido 5115910: Info actualizada (Pendiente).
+2026-01-28 13:52:59 - INFO - Partido 5115911: Info actualizada (Pendiente).
+2026-01-28 13:53:02 - INFO - Partido 5115912: Info actualizada (Pendiente).
+2026-01-28 13:53:05 - INFO - Partido 5115914: Info actualizada (Pendiente).
+2026-01-28 13:53:08 - INFO - Partido 5115915: Info actualizada (Pendiente).
+2026-01-28 13:53:11 - INFO - Partido 5115916: Info actualizada (Pendiente).
+2026-01-28 13:53:14 - INFO - Partido 5115917: Info actualizada (Pendiente).
+2026-01-28 13:53:17 - INFO - Partido 5101920: Info actualizada (Pendiente).
+2026-01-28 13:53:21 - INFO - Partido 5101916: Info actualizada (Pendiente).
+2026-01-28 13:53:24 - INFO - Partido 5101910: Info actualizada (Pendiente).
+2026-01-28 13:53:27 - INFO - Partido 5101921: Info actualizada (Pendiente).
+2026-01-28 13:53:30 - INFO - Partido 5101912: Info actualizada (Pendiente).
+2026-01-28 13:53:33 - INFO - Partido 5101913: Info actualizada (Pendiente).
+2026-01-28 13:53:36 - INFO - Partido 5101919: Info actualizada (Pendiente).
+2026-01-28 13:53:39 - INFO - Partido 5101914: Info actualizada (Pendiente).
+2026-01-28 13:53:42 - INFO - Partido 5101915: Info actualizada (Pendiente).
+2026-01-28 13:53:45 - INFO - Partido 5101922: Info actualizada (Pendiente).
+2026-01-28 13:53:48 - INFO - Partido 5101909: Info actualizada (Pendiente).
+2026-01-28 13:53:51 - INFO - Partido 5101923: Info actualizada (Pendiente).
+2026-01-28 13:53:54 - INFO - Partido 5101911: Info actualizada (Pendiente).
+2026-01-28 13:53:56 - INFO - Partido 5101917: Info actualizada (Pendiente).
+2026-01-28 13:54:00 - INFO - Partido 5101918: Info actualizada (Pendiente).
+2026-01-28 13:54:03 - INFO - Partido 5101908:
+2026-01-28 13:54:03 - INFO - 	Detalles de 46 jugadores cargados.
+2026-01-28 13:54:03 - INFO - 	Detalles de 31 tiros cargados.
+2026-01-28 13:54:03 - INFO - 	Detalles de 4 tarjetas cargadas.
+2026-01-28 13:54:03 - INFO - Partido 5101908: Actualizacion completa.
+2026-01-28 13:54:06 - INFO - Partido 5101900:
+2026-01-28 13:54:06 - INFO - 	Detalles de 47 jugadores cargados.
+2026-01-28 13:54:06 - INFO - 	Detalles de 22 tiros cargados.
+2026-01-28 13:54:06 - INFO - 	Detalles de 3 tarjetas cargadas.
+2026-01-28 13:54:06 - INFO - Partido 5101900: Actualizacion completa.
+2026-01-28 13:54:09 - INFO - Partido 5101901:
+2026-01-28 13:54:09 - INFO - 	Detalles de 46 jugadores cargados.
+2026-01-28 13:54:09 - INFO - 	Detalles de 17 tiros cargados.
+2026-01-28 13:54:09 - INFO - 	Detalles de 6 tarjetas cargadas.
+2026-01-28 13:54:09 - INFO - Partido 5101901: Actualizacion completa.
+2026-01-28 13:54:13 - INFO - Partido 5101895:
+2026-01-28 13:54:13 - INFO - 	Detalles de 46 jugadores cargados.
+2026-01-28 13:54:13 - INFO - 	Detalles de 23 tiros cargados.
+2026-01-28 13:54:13 - INFO - 	Detalles de 6 tarjetas cargadas.
+2026-01-28 13:54:13 - INFO - Partido 5101895: Actualizacion completa.
+2026-01-28 13:54:16 - INFO - Partido 5101903:
+2026-01-28 13:54:16 - INFO - 	Detalles de 46 jugadores cargados.
+2026-01-28 13:54:16 - INFO - 	Detalles de 19 tiros cargados.
+2026-01-28 13:54:16 - INFO - 	Detalles de 6 tarjetas cargadas.
+2026-01-28 13:54:16 - INFO - Partido 5101903: Actualizacion completa.
+2026-01-28 13:54:19 - INFO - Partido 5101894: Info actualizada (Pendiente).
+2026-01-28 13:54:22 - INFO - Partido 5101905: Info actualizada (Pendiente).
+2026-01-28 13:54:25 - INFO - Partido 5101906: Info actualizada (Pendiente).
+2026-01-28 13:54:28 - INFO - Partido 5101898: Info actualizada (Pendiente).
+2026-01-28 13:54:31 - INFO - Partido 5101897: Info actualizada (Pendiente).
+2026-01-28 13:54:34 - INFO - Partido 5101896: Info actualizada (Pendiente).
+2026-01-28 13:54:37 - INFO - Partido 5101902: Info actualizada (Pendiente).
+2026-01-28 13:54:40 - INFO - Partido 5101899: Info actualizada (Pendiente).
+2026-01-28 13:54:43 - INFO - Partido 5101907: Info actualizada (Pendiente).
+2026-01-28 13:54:46 - INFO - Partido 5115888: Info actualizada (Pendiente).
+2026-01-28 13:54:49 - INFO - Partido 5115889: Info actualizada (Pendiente).
+2026-01-28 13:54:52 - INFO - Partido 5115890: Info actualizada (Pendiente).
+2026-01-28 13:54:55 - INFO - Partido 5115891: Info actualizada (Pendiente).
+2026-01-28 13:54:58 - INFO - Partido 5115892: Info actualizada (Pendiente).
+2026-01-28 13:55:01 - INFO - Partido 5115893: Info actualizada (Pendiente).
+2026-01-28 13:55:04 - INFO - Partido 5115894: Info actualizada (Pendiente).
+2026-01-28 13:55:07 - INFO - Partido 5115895: Info actualizada (Pendiente).
+2026-01-28 13:55:10 - INFO - Partido 5115896: Info actualizada (Pendiente).
+2026-01-28 13:55:13 - INFO - Partido 5115897: Info actualizada (Pendiente).
+2026-01-28 13:55:16 - INFO - Partido 5115898: Info actualizada (Pendiente).
+2026-01-28 13:55:19 - INFO - Partido 5115899: Info actualizada (Pendiente).
+2026-01-28 13:55:22 - INFO - Partido 5115900: Info actualizada (Pendiente).
+2026-01-28 13:55:25 - INFO - Partido 5115901: Info actualizada (Pendiente).
+2026-01-28 13:55:28 - INFO - Partido 5115902: Info actualizada (Pendiente).
+2026-01-28 13:55:31 - INFO - Partido 5115903: Info actualizada (Pendiente).
+2026-01-28 13:55:34 - INFO - Partido 5115904: Info actualizada (Pendiente).
+2026-01-28 13:55:36 - INFO - Partido 5115905: Info actualizada (Pendiente).
+2026-01-28 13:55:38 - INFO - --- Fin del ciclo de actualizacion ---

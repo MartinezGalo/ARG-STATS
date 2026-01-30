@@ -1,196 +1,95 @@
-# ⚽ ARG STATS — Sistema de Analítica de Fútbol
+# ⚽ ARG STATS — Advance Football Analytics System
 
-**ARG STATS** es una plataforma **Full‑Stack** de analítica avanzada orientada al **análisis táctico** y la **predicción de eventos** en el fútbol argentino. Está diseñada para trabajar directamente sobre **datos reales de partidos**, priorizando consistencia estadística, comparabilidad y rendimiento.
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-2.0+-black.svg?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.0+-38B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![SQLite](https://img.shields.io/badge/SQLite-3.0+-003B57.svg?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 
-La aplicación integra un **motor predictivo**, una **pizarra táctica interactiva**, rankings normalizados y perfiles 360° de jugadores, equipos y árbitros.
-
----
-
-## 🧠 ¿Qué hace ARG STATS?
-
-- Procesa **datos históricos reales** en una base de datos optimizada.
-- Evita métricas infladas usando **suelo de minutos** y normalización **p90**.
-- Cruza **ataque + defensa + árbitro** para generar predicciones probabilísticas.
-- Unifica **scouting visual (pizarra)** con **analítica cuantitativa**.
-- Pensado para uso **real de analistas**, no solo dashboards.
+**ARG STATS** es una plataforma **Full-Stack** de analítica avanzada orientada al **análisis táctico** y la **predicción de escenarios estadísticos** en el fútbol argentino. Diseñada para analistas y entusiastas, la herramienta transforma datos crudos en inteligencia accionable a través de una interfaz moderna y reactiva.
 
 ---
 
-🌐 Demo Online
+## 📊 Fuente de Datos
 
-La aplicación puede previsualizarse en producción en el siguiente enlace:
-
-🔗 https://arg-stats.onrender.com
-
-El despliegue se realiza en Render y puede tardar unos segundos en iniciar si la instancia está en reposo.
+Toda la información estadística, detalles de jugadores, formaciones y eventos de partidos han sido obtenidos y procesados a partir de los datos públicos de **[FotMob](https://www.fotmob.com)**.
 
 ---
 
-## 🚀 Funcionalidades Clave
+## 🧠 Core: Intelligence & Prediction
 
+A diferencia de los dashboards convencionales, **ARG STATS** implementa lógica de normalización y cruce de variables:
+
+- **Normalización p90 Real:** Todas las métricas de jugadores se calculan en base a minutos jugados efectivos, eliminando el sesgo de jugadores con pocos minutos y métricas infladas.
+- **Motor de Predicción Contextual:** Cruza los rankings de ataque del local contra la defensa del visitante (y viceversa), ajustando los resultados según la **rigurosidad histórica del árbitro** designado para el encuentro.
+- **Análisis de Tendencias:** Capacidad de filtrar por "Últimos 5 Partidos" para detectar picos de forma, rachas y variaciones tácticas recientes.
+
+---
+
+## 🚀 Funcionalidades Principales
 
 ### 1. Match Intelligence & Pizarra Táctica
+- **Pizarra Interactiva:** Drag & Drop de jugadores, selección múltiple (Lasso), y guardado de posiciones.
+- **Último XI Real:** Carga automática de la última formación confirmada para partidos pendientes.
+- **Notas de Scouting:** Persistencia de análisis táctico por partido y por jugador.
 
-- **Motor Predictivo Propio**
-  - Cruza rankings ofensivos y defensivos de ambos equipos.
-  - Ajusta el output según la **rigurosidad histórica del árbitro** (tarjetas y faltas).
+### 2. Perfil de Jugador 360°
+- **Multicapa:** Visualización de stats del partido, últimos 5 y acumulado de temporada.
+- **Rankings Relativos:** Posición del jugador en el Top 20 a nivel liga, equipo y posición específica.
+- **Historial de Clubes:** Seguimiento automático de transferencias y equipos anteriores.
 
-- **Pizarra Táctica Interactiva**
-  - Drag & Drop de jugadores titulares.
-  - Posiciones normalizadas (escala 0–1).
-  - Visualización del **último XI real** si el partido no se jugó.
-
-- **Interacción Avanzada**
-  - Selección múltiple (Lasso Select).
-  - Sustituciones dinámicas con buscador.
-  - Persistencia de notas tácticas por partido.
+### 3. Análisis Disciplinario (Árbitros)
+- **Perfil de Rigurosidad:** Promedio de tarjetas y faltas vs promedio de la liga.
+- **Top Targets:** Identificación de los equipos más castigados por cada colegiado.
 
 ---
 
-### 2. Engine de Estadísticas Avanzadas
+## 🌐 Demo Online
 
-- **Normalización p90**
-  - Todas las métricas de jugadores se ajustan por minutos jugados.
+Explora la aplicación en producción aquí:
+🔗 **[arg-stats.onrender.com](https://arg-stats.onrender.com)**
 
-- **Filtro de Ultimos 5 Partidos**
-  - Rankings basados solo en los últimos 5 partidos por equipo.
-  - Detección de rachas, picos de forma y caídas de rendimiento.
-
-
----
-
-### 3. Perfil de Jugador 360°
-
-Modal dinámico con:
-
-- **Estadísticas Multicapa**
-  - Partido actual
-  - Últimos 5 partidos
-  - Total histórico
-
-- **Rankings Contextuales (Top 20)**
-  - A nivel:
-    - Liga
-    - Equipo
-    - Posición
-
-- **Transfer Tracker Automático**
-  - Detección de cambio de club (`is_transferred`) si el último partido fue en otro equipo.
-
-- **Notas de Scouting Persistentes**
-  - Guardadas por jugador en base de datos.
-
----
-
-### 4. Análisis de Equipos
-
-- Historial completo de partidos.
-- Rankings globales:
-  - Ataque vs Defensa
-  - Totales y recibidos
-- Comparativas claras por categoría.
-
----
-
-### 5. Análisis de Árbitros
-
-- **Perfiles Disciplinarios**
-  - Promedios reales por partido.
-  - Rankings globales en tarjetas y faltas.
-
-- **Top Targets**
-  - Equipos más castigados por cada árbitro.
-
----
-
-## 🔮 Motor Predictivo (Cómo Funciona)
-
-El predictor transforma rankings en **probabilidades relativas (0–100)**:
-
-- Ataque propio (ranking a favor)
-- Defensa rival (ranking en contra)
-- Ajuste por árbitro (tarjetas / faltas)
-
-Esto permite:
-- Comparar partidos heterogéneos.
-- Detectar contextos de alto volumen de eventos.
-
-> No es una predicción de marcador, sino de **escenario estadístico**.
+*(Desplegado en Render. Puede tardar unos segundos en iniciar si la instancia está inactiva).*
 
 ---
 
 ## 🛠️ Stack Tecnológico
 
-- **Backend**: Python + Flask (monolito optimizado)
-- **Base de Datos**: SQLite
-  - Índices estratégicos
-  - Subqueries y agregaciones controladas
-- **Frontend**: Tailwind CSS + JavaScript (ES6)
-- **Templates**: Jinja2 embebido
-- **Deploy**: Render (compatible out‑of‑the‑box)
+- **Backend:** Python + Flask (Monolito optimizado para alta concurrencia de lectura).
+- **Database:** SQLite con indexación estratégica para subconsultas complejas de ordenamiento temporal.
+- **Frontend:** JavaScript (ES6+) Vanilla + Tailwind CSS para una experiencia UI/UX fluida y sin dependencias pesadas.
+- **Visuals:** Renderizado dinámico de escudos y posiciones mediante coordenadas normalizadas.
 
 ---
 
-## 🧠 Soluciones Técnicas Destacadas
+## ⚙️ Instalación y Uso Local
 
-- **CTEs & Subqueries Controladas**
-  - Evita N+1 queries en rankings complejos.
+1. **Clonar el repositorio:**
+   ```bash
+   git clone https://github.com/MartinezGalo/ARG-STATS.git
+   cd ARG-STATS
+   ```
 
-- **Window‑like Logic**
-  - Última camiseta, posición y equipo vía subconsultas ordenadas por fecha.
+2. **Instalar dependencias:**
+   ```bash
+   pip install flask
+   ```
 
-- **Escalabilidad Lógica**
-  - API preparada para separar frontend / backend.
+3. **Ejecutar la aplicación:**
+   ```bash
+   python app.py
+   ```
 
----
-
-## 🔌 Endpoints Principales
-
-### API
-
-- `/api/team_stats`
-- `/api/player_stats`
-- `/api/team_ranking/<team_id>`
-- `/api/match_prediction/<match_id>`
-
-### Vistas
-
-- `/` — Centro de Monitoreo
-- `/stats` — Estadísticas de Liga
-- `/match/<id>` — Match Intelligence
-- `/team/<id>` — Perfil de Equipo
-- `/referee/<name>` — Perfil de Árbitro
-
----
-
-## ⚙️ Instalación Local
-
-```bash
-git clone https://github.com/MartinezGalo/ARG-STATS.git
-cd ARG-STATS
-pip install flask
-python app.py
-```
-
-Abrir en el navegador:
-
-```
-http://127.0.0.1:5001
-```
+4. **Acceder:**
+   Abre [http://127.0.0.1:5001](http://127.0.0.1:5001) en tu navegador.
 
 ---
 
 ## 👥 Autores
 
-- **MartinezGalo** — Arquitectura, backend, analítica
-- **francoqdev** — Frontend, UI y experiencia visual
+- **MartinezGalo** — Arquitectura de Datos, Backend & Algoritmos Predictivos.
+- **francoqdev** — Frontend, Experiencia de Usuario & Diseño Visual.
 
 ---
 
 ## 📌 Estado del Proyecto
-
-En desarrollo activo.
-
-
-
-
+Proyecto en **desarrollo activo**.

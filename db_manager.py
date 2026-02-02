@@ -34,11 +34,14 @@ def initialize_database():
             match_id TEXT,
             player_id TEXT,
             team_id TEXT,
-            player_name TEXT,
+            first_name TEXT,
+            last_name TEXT,
             position TEXT,
             shirt_number TEXT,
             is_starter BOOLEAN,
             minutes_played INTEGER,
+            substitution TEXT,
+            sub_minute TEXT,
             rating REAL,
             role_x REAL,
             role_y REAL,
@@ -55,13 +58,16 @@ def initialize_database():
             shot_id INTEGER PRIMARY KEY AUTOINCREMENT,
             match_id TEXT,
             player_id TEXT,
-            player_name TEXT,
+            first_name TEXT,
+            last_name TEXT,
             team_id TEXT,
             minute TEXT,
             on_target BOOLEAN,
             shot_type TEXT,
             situation TEXT,
             outcome TEXT,
+            own_goal BOOLEAN,
+            assist_id TEXT,
             inside_box BOOLEAN,
             FOREIGN KEY(match_id) REFERENCES matches(id),
             FOREIGN KEY(match_id, player_id) REFERENCES player_match_details(match_id, player_id)
@@ -74,7 +80,8 @@ def initialize_database():
             card_id INTEGER PRIMARY KEY AUTOINCREMENT,
             match_id TEXT,
             player_id TEXT,
-            player_name TEXT,
+            first_name TEXT,
+            last_name TEXT,
             team_id TEXT,
             card_type TEXT, -- Yellow, Red, YellowRed
             minute TEXT,
@@ -83,11 +90,24 @@ def initialize_database():
         )
     ''')
 
-    cursor.execute('''
-        CREATE INDEX IF NOT EXISTS idx_pmd_player_match ON player_match_details (player_id, match_id);
-        CREATE INDEX IF NOT EXISTS idx_pmd_team ON player_match_details (team_id);
-        CREATE INDEX IF NOT EXISTS idx_shots_player_match ON shots (player_id, match_id);
-        CREATE INDEX IF NOT EXISTS idx_matches_date ON matches (date DESC);''')
+
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmd_player_match ON player_match_details (player_id, match_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmd_team ON player_match_details (team_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_shots_player_match ON shots (player_id, match_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_matches_date ON matches (date DESC);')
+
+    # Indices de optimizacion basados en el uso de app.py
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_matches_referee ON matches (referee, finished, date DESC);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_matches_home_context ON matches (id_home_team, finished, date DESC);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_matches_away_context ON matches (id_away_team, finished, date DESC);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_matches_gameweek ON matches (gameweek, tournament);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_shots_match_id ON shots (match_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_cards_match_id ON cards (match_id);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmd_match_team_starter ON player_match_details (match_id, team_id, is_starter);')
+
+    # Views creation
+    cursor.execute('CREATE VIEW IF NOT EXISTS goals AS SELECT * FROM shots WHERE outcome = "Goal"')
+    cursor.execute('CREATE VIEW IF NOT EXISTS shots_on_target AS SELECT * FROM shots WHERE on_target = 1')
 
     # connection.commit(): Guarda permanentemente todos los cambios realizados por el cursor.
     connection.commit()
@@ -100,3 +120,5 @@ def initialize_database():
     print("   - Tabla 'player_match_details' creada.")
     print("   - Tabla 'shots' creada.")
     print("   - Tabla 'cards' creada.")
+if __name__ == "__main__":
+    initialize_database()

@@ -14,7 +14,7 @@ TEAM_NAME_MAP = {
     "Atletico Tucuman": "Atl. Tucuman",
     "Defensa y Justicia": "Def. y Justicia",
     "Deportivo Riestra": "Riestra",
-    "Independiente Rivadavia": "Indep. Rivadavia",
+    "Independiente Rivadavia": "Ind. Rivadavia",
     "Newell's Old Boys": "Newell's",
     "Velez Sarsfield": "Velez",
     "Estudiantes de Rio Cuarto" : "Est. Rio Cuarto",
@@ -49,6 +49,11 @@ def init_notes_table():
     conn = get_db_connection()
     conn.execute('CREATE TABLE IF NOT EXISTS player_notes (player_id TEXT PRIMARY KEY, notes TEXT)')
     conn.execute('CREATE TABLE IF NOT EXISTS match_notes (match_id TEXT PRIMARY KEY, notes TEXT)')
+    
+    # Views creation
+    conn.execute('CREATE VIEW IF NOT EXISTS goals AS SELECT * FROM shots WHERE outcome = "Goal"')
+    conn.execute('CREATE VIEW IF NOT EXISTS shots_on_target AS SELECT * FROM shots WHERE on_target = 1')
+
     try:
         conn.execute('ALTER TABLE matches ADD COLUMN finished INTEGER DEFAULT 0')
     except:
@@ -56,23 +61,28 @@ def init_notes_table():
     conn.commit()
     conn.close()
 
-def get_referee_rankings():
+def get_referee_rankings(order_by='total'):
     """
     Calcula la posicion de cada arbitro en un top basado en el volumen total de eventos.
     Retorna dos diccionarios: {NombreArbitro: PosicionRanking} para tarjetas y faltas.
     """
     conn = get_db_connection()
+    
+    sort_col = "total" if order_by == 'total' else "avg"
+    
     # Ranking por Total de Tarjetas
-    ref_cards = conn.execute('''
-        SELECT m.referee, COUNT(c.card_id) as total 
+    ref_cards = conn.execute(f'''
+        SELECT m.referee, COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as total,
+        CAST(COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS FLOAT) / COUNT(DISTINCT m.id) as avg
         FROM matches m LEFT JOIN cards c ON m.id = c.match_id 
-        WHERE m.finished = 1 GROUP BY m.referee ORDER BY total DESC
+        WHERE m.finished = 1 GROUP BY m.referee ORDER BY {sort_col} DESC
     ''').fetchall()
     # Ranking por Total de Faltas
-    ref_fouls = conn.execute('''
-        SELECT m.referee, SUM(pmd.fouls_committed) as total 
+    ref_fouls = conn.execute(f'''
+        SELECT m.referee, SUM(pmd.fouls_committed) as total,
+        CAST(SUM(pmd.fouls_committed) AS FLOAT) / COUNT(DISTINCT m.id) as avg
         FROM matches m LEFT JOIN player_match_details pmd ON m.id = pmd.match_id 
-        WHERE m.finished = 1 GROUP BY m.referee ORDER BY total DESC
+        WHERE m.finished = 1 GROUP BY m.referee ORDER BY {sort_col} DESC
     ''').fetchall()
     conn.close()
     return {r['referee']: i+1 for i, r in enumerate(ref_cards)}, {r['referee']: i+1 for i, r in enumerate(ref_fouls)}
@@ -84,8 +94,8 @@ def get_referee_detailed_tops():
     """
     conn = get_db_connection()
     ref_c_q = conn.execute('''
-        SELECT m.referee as name, COUNT(c.card_id) as total, COUNT(DISTINCT m.id) as pj,
-        CAST(COUNT(c.card_id) AS FLOAT) / COUNT(DISTINCT m.id) as avg
+        SELECT m.referee as name, COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as total, COUNT(DISTINCT m.id) as pj,
+        CAST(COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS FLOAT) / COUNT(DISTINCT m.id) as avg
         FROM matches m LEFT JOIN cards c ON m.id = c.match_id 
         WHERE m.finished = 1 AND m.referee IS NOT NULL GROUP BY m.referee ORDER BY total DESC
     ''').fetchall()
@@ -111,7 +121,7 @@ def get_referee_stats_logic(category='cards', order_by='total', limit=None):
              if pj == 0: continue
              ids_str = ",".join([f"'{m}'" for m in match_ids])
              if category == 'cards':
-                 q = f"SELECT COUNT(*) FROM cards WHERE match_id IN ({ids_str})"
+                 q = f"SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 ELSE 1 END), 0) FROM cards WHERE match_id IN ({ids_str})"
              else:
                  q = f"SELECT SUM(fouls_committed) FROM player_match_details WHERE match_id IN ({ids_str})"
              total = conn.execute(q).fetchone()[0] or 0
@@ -124,7 +134,7 @@ def get_referee_stats_logic(category='cards', order_by='total', limit=None):
     else:
         sort_col = "total" if order_by == 'total' else "avg"
         if category == 'cards':
-            q = f'''SELECT m.referee as name, COUNT(c.card_id) as total, COUNT(DISTINCT m.id) as pj, CAST(COUNT(c.card_id) AS FLOAT) / COUNT(DISTINCT m.id) as avg FROM matches m LEFT JOIN cards c ON m.id = c.match_id WHERE m.finished = 1 AND m.referee IS NOT NULL GROUP BY m.referee ORDER BY {sort_col} DESC'''
+            q = f'''SELECT m.referee as name, COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as total, COUNT(DISTINCT m.id) as pj, CAST(COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS FLOAT) / COUNT(DISTINCT m.id) as avg FROM matches m LEFT JOIN cards c ON m.id = c.match_id WHERE m.finished = 1 AND m.referee IS NOT NULL GROUP BY m.referee ORDER BY {sort_col} DESC'''
         else:
             q = f'''SELECT m.referee as name, SUM(pmd.fouls_committed) as total, COUNT(DISTINCT m.id) as pj, CAST(SUM(pmd.fouls_committed) AS FLOAT) / COUNT(DISTINCT m.id) as avg FROM matches m LEFT JOIN player_match_details pmd ON m.id = pmd.match_id WHERE m.finished = 1 AND m.referee IS NOT NULL GROUP BY m.referee ORDER BY {sort_col} DESC'''
         res = conn.execute(q).fetchall()
@@ -162,6 +172,8 @@ def get_lineup_data(match_id, team_id, cards_dict):
             d['role_y'] = float(d['role_y']) / 100 if float(d['role_y']) > 1 else float(d['role_y'])
         except: d['role_x'], d['role_y'] = 0.5, 0.5
         d['card'] = cards_dict.get(str(d['player_id']))
+        # Inject player_name for template compatibility
+        d['player_name'] = d.get('last_name', '')
         res.append(d)
     return res
 
@@ -173,88 +185,86 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
     """
     conn = get_db_connection()
     # Mapeo de nombres de equipos (id -> nombre)
-    teams_map = {str(r['id']): r['name'] for r in conn.execute('SELECT DISTINCT id_home_team as id, home_team as name FROM matches').fetchall()}
+    teams_map = {str(r['id']): r['name'] for r in conn.execute('''
+        SELECT DISTINCT id_home_team as id, home_team as name FROM matches
+        UNION ALL
+        SELECT DISTINCT id_away_team as id, away_team as name FROM matches
+    ''').fetchall()}
 
-    sort_metric = "total" if order_by == 'total' else "avg"
-    relegated_ids = "('10227', '89395')"
+    relegated_list = ['10227', '89395']
 
     # Si no se pide limit, reutilizamos la implementacion previa que usa consultas globales
     if not limit:
-        if category == 'shots':
-            where_f = "AND on_target = 1" if filter_type == 'target' else "AND inside_box = 0" if filter_type == 'long' else ""
+        # 1. Calculate PJ for all teams correctly
+        pj_map = {}
+        matches_all = conn.execute("SELECT id_home_team, id_away_team FROM matches WHERE finished = 1").fetchall()
+        for m in matches_all:
+            h, a = str(m[0]), str(m[1])
+            pj_map[h] = pj_map.get(h, 0) + 1
+            pj_map[a] = pj_map.get(a, 0) + 1
 
-            made_q = f'''
-                SELECT team_id as rank_team, COUNT(*) as total, COUNT(DISTINCT match_id) as pj, CAST(COUNT(*) AS FLOAT) / COUNT(DISTINCT match_id) as avg 
-                FROM shots 
-                WHERE 1=1 {where_f} 
-                GROUP BY rank_team 
-                HAVING rank_team NOT IN {relegated_ids}
-                ORDER BY {sort_metric} DESC'''
-            
-            against_q = f'''
-                SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total, COUNT(DISTINCT s.match_id) as pj, CAST(COUNT(*) AS FLOAT) / COUNT(DISTINCT s.match_id) as avg 
-                FROM shots s JOIN matches m ON s.match_id = m.id 
-                WHERE 1=1 {where_f} 
-                GROUP BY rank_team 
-                HAVING rank_team NOT IN {relegated_ids}
-                ORDER BY {sort_metric} DESC'''
+        if category == 'shots':
+            if filter_type == 'target':
+                made_q = "SELECT team_id as rank_team, COUNT(*) as total FROM shots_on_target WHERE own_goal = 0 GROUP BY rank_team"
+                against_q = "SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM shots_on_target s JOIN matches m ON s.match_id = m.id WHERE s.own_goal = 0 GROUP BY rank_team"
+            else:
+                where_f = "AND inside_box = 0" if filter_type == 'long' else ""
+                made_q = f"SELECT team_id as rank_team, COUNT(*) as total FROM shots WHERE 1=1 {where_f} AND own_goal = 0 GROUP BY rank_team"
+                against_q = f"SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM shots s JOIN matches m ON s.match_id = m.id WHERE 1=1 {where_f} AND s.own_goal = 0 GROUP BY rank_team"
 
         elif category == 'headers':
-            made_q = f'''
-                SELECT team_id as rank_team, COUNT(*) as total, COUNT(DISTINCT match_id) as pj, CAST(COUNT(*) AS FLOAT) / COUNT(DISTINCT match_id) as avg 
-                FROM shots WHERE shot_type = 'Header' 
-                GROUP BY rank_team 
-                HAVING rank_team NOT IN {relegated_ids}
-                ORDER BY {sort_metric} DESC'''
-            against_q = f'''
-                SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total, COUNT(DISTINCT s.match_id) as pj, CAST(COUNT(*) AS FLOAT) / COUNT(DISTINCT s.match_id) as avg 
-                FROM shots s JOIN matches m ON s.match_id = m.id 
-                WHERE s.shot_type = 'Header' 
-                GROUP BY rank_team 
-                HAVING rank_team NOT IN {relegated_ids}
-                ORDER BY {sort_metric} DESC'''
+            made_q = "SELECT team_id as rank_team, COUNT(*) as total FROM shots WHERE shot_type = 'Header' AND own_goal = 0 GROUP BY rank_team"
+            against_q = "SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM shots s JOIN matches m ON s.match_id = m.id WHERE s.shot_type = 'Header' AND s.own_goal = 0 GROUP BY rank_team"
+
+        elif category == 'goals':
+            made_q = "SELECT team_id as rank_team, COUNT(*) as total FROM goals GROUP BY rank_team"
+            against_q = "SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM goals s JOIN matches m ON s.match_id = m.id GROUP BY rank_team"
 
         elif category == 'cards':
-            made_q = f'''
-                SELECT team_id as rank_team, COUNT(*) as total, COUNT(DISTINCT match_id) as pj, CAST(COUNT(*) AS FLOAT) / COUNT(DISTINCT match_id) as avg 
-                FROM cards 
-                GROUP BY rank_team 
-                HAVING rank_team NOT IN {relegated_ids}
-                ORDER BY {sort_metric} DESC'''
-            against_q = f'''
-                SELECT (CASE WHEN c.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total, COUNT(DISTINCT c.match_id) as pj, CAST(COUNT(*) AS FLOAT) / COUNT(DISTINCT c.match_id) as avg 
-                FROM cards c JOIN matches m ON c.match_id = m.id 
-                GROUP BY rank_team 
-                HAVING rank_team NOT IN {relegated_ids}
-                ORDER BY {sort_metric} DESC'''
+            made_q = "SELECT team_id as rank_team, COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as total FROM cards GROUP BY rank_team"
+            against_q = "SELECT (CASE WHEN c.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as total FROM cards c JOIN matches m ON c.match_id = m.id GROUP BY rank_team"
 
         elif category == 'fouls':
-            made_q = f'''
-                SELECT team_id as rank_team, SUM(fouls_committed) as total, COUNT(DISTINCT match_id) as pj, CAST(SUM(fouls_committed) AS FLOAT) / COUNT(DISTINCT match_id) as avg 
-                FROM player_match_details 
-                GROUP BY rank_team 
-                HAVING rank_team NOT IN {relegated_ids}
-                ORDER BY {sort_metric} DESC'''
-            against_q = f'''
-                SELECT team_id as rank_team, SUM(fouls_received) as total, COUNT(DISTINCT match_id) as pj, CAST(SUM(fouls_received) AS FLOAT) / COUNT(DISTINCT match_id) as avg 
-                FROM player_match_details 
-                GROUP BY rank_team 
-                HAVING rank_team NOT IN {relegated_ids}
-                ORDER BY {sort_metric} DESC'''
+            made_q = "SELECT team_id as rank_team, SUM(fouls_committed) as total FROM player_match_details GROUP BY rank_team"
+            against_q = "SELECT team_id as rank_team, SUM(fouls_received) as total FROM player_match_details GROUP BY rank_team"
 
         res_made = conn.execute(made_q).fetchall()
         res_against = conn.execute(against_q).fetchall()
         conn.close()
 
-        def structure(data):
-            return [{"id": str(r[0]), "name": teams_map.get(str(r[0]), "N/A"), "total": int(r[1]), "pj": r[2], "avg": round(r[3], 2)} for r in data]
+        def process_results(query_res):
+            data_map = {str(r['rank_team']): int(r['total'] or 0) for r in query_res}
+            output = []
+            for tid, tname in teams_map.items():
+                if tid in relegated_list: continue # Filter relegated
+                
+                total = data_map.get(tid, 0)
+                pj = pj_map.get(tid, 0)
+                avg = round(total / pj, 2) if pj > 0 else 0.0
+                
+                output.append({
+                    "id": tid, 
+                    "name": tname, 
+                    "total": total, 
+                    "pj": pj, 
+                    "avg": avg
+                })
+            return output
 
-        return structure(res_made), structure(res_against)
+        made_list = process_results(res_made)
+        against_list = process_results(res_against)
+        
+        # Sort
+        key = (lambda x: x['total']) if order_by == 'total' else (lambda x: x['avg'])
+        made_list.sort(key=key, reverse=True)
+        against_list.sort(key=key, reverse=True)
+        
+        return made_list, against_list
 
     # Si se solicita limitar a ultimos N partidos por equipo, hacemos calculo por equipo
     results_made = []
     results_against = []
-    team_ids = [t for t in teams_map.keys() if t not in ['10227', '89395']]
+    team_ids = [t for t in teams_map.keys() if t not in relegated_list]
 
     for tid in team_ids:
         # Obtener ultimos `limit` partidos finalizados donde participo el equipo
@@ -269,24 +279,36 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
         ids_str = ",".join([f"'{m}'" for m in match_ids])
 
         if category == 'shots':
-            where_f = "AND on_target = 1" if filter_type == 'target' else "AND inside_box = 0" if filter_type == 'long' else ""
-            # A favor: contar eventos del equipo en esos partidos
-            q_made = f"SELECT COUNT(*) FROM shots WHERE team_id = ? AND match_id IN ({ids_str}) {where_f}"
-            total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
-            # En contra: contar eventos del rival en esos partidos
-            q_against = f"SELECT COUNT(*) FROM shots s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.match_id IN ({ids_str}) {where_f}"
-            total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
+            if filter_type == 'target':
+                q_made = f"SELECT COUNT(*) FROM shots_on_target WHERE team_id = ? AND match_id IN ({ids_str}) AND own_goal = 0"
+                total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
+                q_against = f"SELECT COUNT(*) FROM shots_on_target s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.match_id IN ({ids_str}) AND s.own_goal = 0"
+                total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
+            else:
+                where_f = "AND inside_box = 0" if filter_type == 'long' else ""
+                # A favor: contar eventos del equipo en esos partidos
+                q_made = f"SELECT COUNT(*) FROM shots WHERE team_id = ? AND match_id IN ({ids_str}) {where_f} AND own_goal = 0"
+                total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
+                # En contra: contar eventos del rival en esos partidos
+                q_against = f"SELECT COUNT(*) FROM shots s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.match_id IN ({ids_str}) {where_f} AND s.own_goal = 0"
+                total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
 
         elif category == 'headers':
-            q_made = f"SELECT COUNT(*) FROM shots WHERE team_id = ? AND shot_type = 'Header' AND match_id IN ({ids_str})"
+            q_made = f"SELECT COUNT(*) FROM shots WHERE team_id = ? AND shot_type = 'Header' AND match_id IN ({ids_str}) AND own_goal = 0"
             total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
-            q_against = f"SELECT COUNT(*) FROM shots s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.shot_type = 'Header' AND s.match_id IN ({ids_str})"
+            q_against = f"SELECT COUNT(*) FROM shots s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.shot_type = 'Header' AND s.match_id IN ({ids_str}) AND s.own_goal = 0"
+            total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
+
+        elif category == 'goals':
+            q_made = f"SELECT COUNT(*) FROM goals WHERE team_id = ? AND match_id IN ({ids_str})"
+            total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
+            q_against = f"SELECT COUNT(*) FROM goals s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.match_id IN ({ids_str})"
             total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
 
         elif category == 'cards':
-            q_made = f"SELECT COUNT(*) FROM cards WHERE team_id = ? AND match_id IN ({ids_str})"
+            q_made = f"SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE team_id = ? AND match_id IN ({ids_str})"
             total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
-            q_against = f"SELECT COUNT(*) FROM cards c JOIN matches m ON c.match_id = m.id WHERE (CASE WHEN c.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND c.match_id IN ({ids_str})"
+            q_against = f"SELECT COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards c JOIN matches m ON c.match_id = m.id WHERE (CASE WHEN c.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND c.match_id IN ({ids_str})"
             total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
 
         elif category == 'fouls':
@@ -317,17 +339,25 @@ def _get_stat_sql_config(rank_type, filter_type):
     extra_where = ""
     
     if rank_type == 'tiradores' or rank_type == 'shots':
-        base_join = "LEFT JOIN shots s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id"
+        if filter_type == 'target':
+            base_join = "LEFT JOIN shots_on_target s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id"
+            extra_where = "AND s.own_goal = 0"
+        else:
+            base_join = "LEFT JOIN shots s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id"
+            val_col = "COUNT(s.shot_id)"
+            extra_where = "AND s.own_goal = 0"
+            if filter_type == 'long': extra_where += " AND s.inside_box = 0"
         val_col = "COUNT(s.shot_id)"
-        if filter_type == 'target': extra_where = "AND s.on_target = 1"
-        elif filter_type == 'long': extra_where = "AND s.inside_box = 0"
     elif rank_type == 'headers':
         base_join = "LEFT JOIN shots s ON pmd.player_id = s.player_id AND pmd.match_id = s.match_id"
         val_col = "COUNT(s.shot_id)"
-        extra_where = "AND s.shot_type = 'Header'"
+        extra_where = "AND s.shot_type = 'Header' AND s.own_goal = 0"
+    elif rank_type == 'goals':
+        base_join = "LEFT JOIN goals g ON pmd.player_id = g.player_id AND pmd.match_id = g.match_id"
+        val_col = "COUNT(g.shot_id)"
     elif rank_type == 'yellows' or rank_type == 'cards':
         base_join = "LEFT JOIN cards c ON pmd.player_id = c.player_id AND pmd.match_id = c.match_id"
-        val_col = "COUNT(c.card_id)"
+        val_col = "COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0)"
     elif rank_type == 'fouls':
         val_col = "SUM(pmd.fouls_committed)"
     elif rank_type == 'fouls_rec' or rank_type == 'fouls_received':
@@ -363,8 +393,13 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
 
     join_sql, val_sql, where_sql = _get_stat_sql_config(rank_type, filter_type)
     
+    # Mover condiciones del WHERE al ON del LEFT JOIN para que no filtre filas de pmd (partidos jugados)
+    if where_sql:
+        join_sql += f" {where_sql}"
+        where_sql = ""
+    
     query = f'''
-        SELECT pmd.player_id, pmd.player_name, pmd.position, {val_sql} as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct,
+        SELECT pmd.player_id, pmd.last_name as player_name, pmd.position, {val_sql} as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct,
         (SELECT shirt_number FROM player_match_details pmd3 JOIN matches m3 ON pmd3.match_id = m3.id WHERE pmd3.player_id = pmd.player_id ORDER BY m3.date DESC LIMIT 1) as shirt_number,
         SUM(pmd.minutes_played) as minutes_played
         FROM player_match_details pmd 
@@ -374,7 +409,7 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
     '''
     
     res = conn.execute(query, (str(team_id),)).fetchall()
-    u_map = {"tiradores": "tiros", "shots": "tiros", "headers": "cabezazos", "yellows": "tarjetas", "cards": "tarjetas", "fouls": "faltas", "fouls_rec": "recibidas", "fouls_received": "recibidas"}
+    u_map = {"tiradores": "tiros", "shots": "tiros", "goals":"goles", "headers": "cabezazos", "yellows": "tarjetas", "cards": "tarjetas", "fouls": "faltas", "fouls_rec": "faltas recibidas", "fouls_received": "recibidas"}
     conn.close()
     
     output = []
@@ -411,7 +446,7 @@ def get_prediction_logic(home_id, away_id, category='shots', filter_type='all', 
     ref_val = None
     if referee and category in ['cards', 'fouls']:
         if not ref_ranks:
-            rc, rf = get_referee_rankings()
+            rc, rf = get_referee_rankings(order_by='avg')
             ref_ranks = rc if category == 'cards' else rf
         ref_val = ref_ranks.get(referee, 15)
         h_s = int(((30 - rm_h) + (30 - ra_v) + (30 - ref_val)) / 87 * 100)
@@ -427,6 +462,7 @@ def get_team_global_positions(team_id):
     """Calcula rankings detallados (Posicion, Total, PJ) en pares de ataque vs defensa."""
     categories = [
         ('shots', 'all', 'Tiros', 'Tiros Recibidos'),
+        ('goals', 'all', 'Goles', 'Goles Recibidos'),
         ('shots', 'target', 'Tiros(arco)', 'Tiros(arco) Recibidos'),
         ('shots', 'long', 'Tiros(lejos)', 'Tiros(lejos) Recibidos'),
         ('headers', 'all', 'Cabezazos', 'Cabezazos Recibidos'),
@@ -454,13 +490,16 @@ def get_league_player_stats(rank_type='shots', filter_type='all',order_by='total
     conn = get_db_connection()
     # Subconsulta para obtener el nombre del equipo mas reciente del jugador
     team_sub = "(SELECT CASE WHEN pmd2.team_id = m2.id_home_team THEN m2.home_team ELSE m2.away_team END FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
+    # Subconsulta para obtener el ID del equipo mas reciente
+    team_id_sub = "(SELECT pmd2.team_id FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
+    
     pj = "SELECT player_id, COUNT(DISTINCT pmd.match_id) as pj, SUM(pmd.minutes_played) as minutes_played FROM player_match_details pmd WHERE pmd.minutes_played > 0 GROUP BY player_id"
-    order_by_clause = '(pj_table.minutes_played >= 300)' if order_by == 'avg' else 'total'
+    order_by_clause = '(pj_table.minutes_played >= 300) DESC, avg' if order_by == 'avg' else 'total'
     
     join_sql, val_sql, where_sql = _get_stat_sql_config(rank_type, filter_type)
 
     query = f'''
-    SELECT pmd.player_id as id, pmd.player_name as name, pmd.team_id, {team_sub} as team_name, {val_sql} as total, pj_table.pj as pj, pj_table.minutes_played as minutes_played, (CAST({val_sql} AS FLOAT) / pj_table.minutes_played)*90 as avg 
+    SELECT pmd.player_id as id, pmd.last_name as name, {team_id_sub} as team_id, {team_sub} as team_name, {val_sql} as total, pj_table.pj as pj, pj_table.minutes_played as minutes_played, (CAST({val_sql} AS FLOAT) / pj_table.minutes_played)*90 as avg 
     FROM player_match_details pmd 
     {join_sql} 
     LEFT JOIN ({pj}) pj_table ON pmd.player_id = pj_table.player_id
@@ -473,7 +512,7 @@ def get_league_player_stats(rank_type='shots', filter_type='all',order_by='total
     return [{"id": r["id"], "name": r["name"], "t_id": r["team_id"], "t_name": r["team_name"], "total": int(r["total"]), "pj": r["pj"], "minutes_played": int(r["minutes_played"]) ,"avg": round(r["avg"], 2)} for r in res]
 
 
-def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', order_by='total', match_limit=5):
+def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', order_by='total', match_limit=5, limit=100):
     """Calcula estadisticas de jugadores usando los ultimos `match_limit` partidos de cada equipo.
 
     Para cada equipo, obtenemos sus ultimos `match_limit` partidos finalizados y contamos
@@ -496,20 +535,26 @@ def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', o
         ids_str = ','.join([f"'{m}'" for m in match_ids])
 
         if rank_type == 'shots':
-            where_f = "AND on_target = 1" if filter_type == 'target' else "AND inside_box = 0" if filter_type == 'long' else ""
-            q = f"SELECT s.player_id as pid, s.player_name as pname, s.team_id as t_id, COUNT(*) as total FROM shots s WHERE s.team_id = ? AND s.match_id IN ({ids_str}) {where_f} GROUP BY s.player_id"
+            if filter_type == 'target':
+                q = f"SELECT s.player_id as pid, s.last_name as pname, s.team_id as t_id, COUNT(*) as total FROM shots_on_target s WHERE s.team_id = ? AND s.match_id IN ({ids_str}) AND s.own_goal = 0 GROUP BY s.player_id"
+            else:
+                where_f = "AND inside_box = 0" if filter_type == 'long' else ""
+                q = f"SELECT s.player_id as pid, s.last_name as pname, s.team_id as t_id, COUNT(*) as total FROM shots s WHERE s.team_id = ? AND s.match_id IN ({ids_str}) {where_f} AND s.own_goal = 0 GROUP BY s.player_id"
             rows = conn.execute(q, (str(tid),)).fetchall()
         elif rank_type == 'headers':
-            q = f"SELECT s.player_id as pid, s.player_name as pname, s.team_id as t_id, COUNT(*) as total FROM shots s WHERE s.team_id = ? AND s.shot_type = 'Header' AND s.match_id IN ({ids_str}) GROUP BY s.player_id"
+            q = f"SELECT s.player_id as pid, s.last_name as pname, s.team_id as t_id, COUNT(*) as total FROM shots s WHERE s.team_id = ? AND s.shot_type = 'Header' AND s.match_id IN ({ids_str}) AND s.own_goal = 0 GROUP BY s.player_id"
+            rows = conn.execute(q, (str(tid),)).fetchall()
+        elif rank_type == 'goals':
+            q = f"SELECT s.player_id as pid, s.last_name as pname, s.team_id as t_id, COUNT(*) as total FROM goals s WHERE s.team_id = ? AND s.match_id IN ({ids_str}) GROUP BY s.player_id"
             rows = conn.execute(q, (str(tid),)).fetchall()
         elif rank_type == 'cards':
-            q = f"SELECT c.player_id as pid, c.player_name as pname, c.team_id as t_id, COUNT(*) as total FROM cards c WHERE c.team_id = ? AND c.match_id IN ({ids_str}) GROUP BY c.player_id"
+            q = f"SELECT c.player_id as pid, c.last_name as pname, c.team_id as t_id, SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END) as total FROM cards c WHERE c.team_id = ? AND c.match_id IN ({ids_str}) GROUP BY c.player_id"
             rows = conn.execute(q, (str(tid),)).fetchall()
         elif rank_type == 'fouls':
-            q = f"SELECT pmd.player_id as pid, pmd.player_name as pname, pmd.team_id as t_id, SUM(pmd.fouls_committed) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
+            q = f"SELECT pmd.player_id as pid, pmd.last_name as pname, pmd.team_id as t_id, SUM(pmd.fouls_committed) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
             rows = conn.execute(q, (str(tid),)).fetchall()
         elif rank_type in ('fouls_rec', 'fouls_received'):
-            q = f"SELECT pmd.player_id as pid, pmd.player_name as pname, pmd.team_id as t_id, SUM(pmd.fouls_received) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
+            q = f"SELECT pmd.player_id as pid, pmd.last_name as pname, pmd.team_id as t_id, SUM(pmd.fouls_received) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
             rows = conn.execute(q, (str(tid),)).fetchall()
         else:
             rows = []
@@ -529,17 +574,20 @@ def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', o
     out = []
     for pid, v in player_totals.items():
         if v['pj'] == 0: continue
-        team_name_row = conn.execute('SELECT CASE WHEN pmd2.team_id = m2.id_home_team THEN m2.home_team ELSE m2.away_team END as team_name FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = ? ORDER BY m2.date DESC LIMIT 1', (pid,)).fetchone()
-        team_name = team_name_row['team_name'] if team_name_row else ''
+        team_info_row = conn.execute('SELECT pmd2.team_id, CASE WHEN pmd2.team_id = m2.id_home_team THEN m2.home_team ELSE m2.away_team END as team_name FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = ? ORDER BY m2.date DESC LIMIT 1', (pid,)).fetchone()
+        team_name = team_info_row['team_name'] if team_info_row else ''
+        team_id = team_info_row['team_id'] if team_info_row else v['t_id']
+        
         avg = round((v['total'] / v['minutes_played'])*90, 2) if v['minutes_played'] > 0 else 0
-        out.append({'id': v['id'], 'name': v['name'], 't_id': v['t_id'], 't_name': team_name, 'total': v['total'], 'pj': v['pj'], 'minutes_played': v['minutes_played'], 'avg': avg})
+        out.append({'id': v['id'], 'name': v['name'], 't_id': str(team_id), 't_name': team_name, 'total': v['total'], 'pj': v['pj'], 'minutes_played': v['minutes_played'], 'avg': avg})
 
     conn.close()
     if order_by == 'total':
         out.sort(key=lambda x: x[order_by], reverse=True)
     else:
         out.sort(key=lambda x: (x['minutes_played'] >= 150, x[order_by]), reverse=True)
-    return out
+    
+    return out[:limit]
 
 # --- RUTAS ---
 
@@ -567,7 +615,7 @@ def index():
     rh_m, rh_a = get_rankings_from_stats('headers', order_by='avg')
     rc_m, rc_a = get_rankings_from_stats('cards', order_by='avg')
     rf_m, rf_a = get_rankings_from_stats('fouls', order_by='avg')    
-    ref_c, ref_f = get_referee_rankings()
+    ref_c, ref_f = get_referee_rankings(order_by='avg')
     matches = []
     for m in matches_raw:
         row = dict(m)
@@ -582,28 +630,7 @@ def index():
 
 @app.route('/stats')
 def stats_page():
-    s_m_all, s_a_all = get_team_stats_core('shots', 'all')
-    s_m_tar, s_a_tar = get_team_stats_core('shots', 'target')
-    s_m_lng, s_a_lng = get_team_stats_core('shots', 'long')
-    h_m, h_a = get_team_stats_core('headers')
-    c_m, c_a = get_team_stats_core('cards')
-    f_m, f_a = get_team_stats_core('fouls')
-    ref_c, ref_f = get_referee_detailed_tops()
-
-    p_shots_all = get_league_player_stats('shots', 'all')
-    p_shots_tar = get_league_player_stats('shots', 'target')
-    p_shots_lng = get_league_player_stats('shots', 'long')
-    p_headers = get_league_player_stats('headers')
-    p_cards = get_league_player_stats('cards')
-    p_fouls = get_league_player_stats('fouls')
-    p_fouls_rec = get_league_player_stats('fouls_rec')
-
-    return render_template_string(STATS_HTML, 
-        s_m_all=s_m_all, s_a_all=s_a_all, s_m_tar=s_m_tar, s_a_tar=s_a_tar, s_m_lng=s_m_lng, s_a_lng=s_a_lng, 
-        h_m=h_m, h_a=h_a, c_m=c_m, c_a=c_a, f_m=f_m, f_a=f_a, ref_c=ref_c, ref_f=ref_f,
-        p_shots_all=p_shots_all, p_shots_tar=p_shots_tar, p_shots_lng=p_shots_lng, 
-        p_headers=p_headers, p_cards=p_cards, p_fouls=p_fouls, p_fouls_rec=p_fouls_rec
-    )
+    return render_template_string(STATS_HTML, team_map=json.dumps(TEAM_NAME_MAP))
 
 @app.route('/match/<match_id>')
 def match_detail(match_id):
@@ -624,18 +651,36 @@ def match_detail(match_id):
     h_mid = match_id if match['finished'] == 1 else get_last_finished_match_id(match['id_home_team'])
     a_mid = match_id if match['finished'] == 1 else get_last_finished_match_id(match['id_away_team'])
 
+    # Fetch all players for substitution name resolution
+    m_ids = {str(match_id)}
+    if h_mid: m_ids.add(str(h_mid))
+    if a_mid: m_ids.add(str(a_mid))
+    
     home_lineup = get_lineup_data(h_mid, match['id_home_team'], cards_dict) if h_mid else []
     away_lineup = get_lineup_data(a_mid, match['id_away_team'], cards_dict) if a_mid else []
 
-    home_subs = sorted([dict(p) for p in conn.execute('SELECT * FROM player_match_details WHERE match_id=? AND team_id=? AND is_starter=0', (str(h_mid or match_id), str(match['id_home_team']))).fetchall()], key=lambda x: {"ARQ":0,"DF":1,"M":2,"DL":3}.get(x['position'],99))
-    away_subs = sorted([dict(p) for p in conn.execute('SELECT * FROM player_match_details WHERE match_id=? AND team_id=? AND is_starter=0', (str(a_mid or match_id), str(match['id_away_team']))).fetchall()], key=lambda x: {"ARQ":0,"DF":1,"M":2,"DL":3}.get(x['position'],99))
+    def process_subs(rows):
+        res = []
+        for r in rows:
+            d = dict(r)
+            d['player_name'] = d.get('last_name', '')
+            res.append(d)
+        return sorted(res, key=lambda x: {"ARQ":0,"DF":1,"M":2,"DL":3}.get(x['position'],99))
+
+    home_subs = process_subs(conn.execute('SELECT * FROM player_match_details WHERE match_id=? AND team_id=? AND is_starter=0', (str(h_mid or match_id), str(match['id_home_team']))).fetchall())
+    away_subs = process_subs(conn.execute('SELECT * FROM player_match_details WHERE match_id=? AND team_id=? AND is_starter=0', (str(a_mid or match_id), str(match['id_away_team']))).fetchall())
 
     stats = {"home": {"shots": 0, "target": 0, "fouls": 0, "cards": 0}, "away": {"shots": 0, "target": 0, "fouls": 0, "cards": 0}}
     if match['finished'] == 1:
-        for r in conn.execute('SELECT team_id, COUNT(*) as tot, SUM(on_target) as tar FROM shots WHERE match_id=? GROUP BY team_id', (str(match_id),)).fetchall():
-            k = "home" if str(r['team_id']) == str(match['id_home_team']) else "away"; stats[k]["shots"], stats[k]["target"] = r['tot'], r['tar'] or 0
-        stats["home"]["cards"] = conn.execute('SELECT COUNT(*) FROM cards WHERE match_id=? AND team_id=?', (str(match_id), str(match['id_home_team']))).fetchone()[0]
-        stats["away"]["cards"] = conn.execute('SELECT COUNT(*) FROM cards WHERE match_id=? AND team_id=?', (str(match_id), str(match['id_away_team']))).fetchone()[0]
+        # Total Shots
+        for r in conn.execute('SELECT team_id, COUNT(*) as tot FROM shots WHERE match_id=? AND own_goal=0 GROUP BY team_id', (str(match_id),)).fetchall():
+            k = "home" if str(r['team_id']) == str(match['id_home_team']) else "away"; stats[k]["shots"] = r['tot']
+        # Shots on Target (Using View)
+        for r in conn.execute('SELECT team_id, COUNT(*) as tar FROM shots_on_target WHERE match_id=? AND own_goal=0 GROUP BY team_id', (str(match_id),)).fetchall():
+            k = "home" if str(r['team_id']) == str(match['id_home_team']) else "away"; stats[k]["target"] = r['tar']
+            
+        stats["home"]["cards"] = conn.execute("SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE match_id=? AND team_id=?", (str(match_id), str(match['id_home_team']))).fetchone()[0]
+        stats["away"]["cards"] = conn.execute("SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE match_id=? AND team_id=?", (str(match_id), str(match['id_away_team']))).fetchone()[0]
         for r in conn.execute('SELECT team_id, SUM(fouls_committed) as f FROM player_match_details WHERE match_id=? GROUP BY team_id', (str(match_id),)).fetchall():
             k = "home" if str(r['team_id']) == str(match['id_home_team']) else "away"; stats[k]["fouls"] = r['f'] or 0
 
@@ -694,8 +739,8 @@ def match_detail(match_id):
             f_h = conn.execute('SELECT SUM(fouls_committed) FROM player_match_details WHERE match_id=? AND team_id=?', (mid, str(m['id_home_team']))).fetchone()[0] or 0
             f_v = conn.execute('SELECT SUM(fouls_committed) FROM player_match_details WHERE match_id=? AND team_id=?', (mid, str(m['id_away_team']))).fetchone()[0] or 0
             # Tarjetas por equipo
-            c_h = conn.execute('SELECT COUNT(*) FROM cards WHERE match_id=? AND team_id=?', (mid, str(m['id_home_team']))).fetchone()[0] or 0
-            c_v = conn.execute('SELECT COUNT(*) FROM cards WHERE match_id=? AND team_id=?', (mid, str(m['id_away_team']))).fetchone()[0] or 0
+            c_h = conn.execute("SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE match_id=? AND team_id=?", (mid, str(m['id_home_team']))).fetchone()[0]
+            c_v = conn.execute("SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE match_id=? AND team_id=?", (mid, str(m['id_away_team']))).fetchone()[0]
             
             ref_history.append({
                 'date': m['date'], 'match_id': m['id'], 
@@ -705,8 +750,34 @@ def match_detail(match_id):
                 'id_home_team': m['id_home_team'], 'id_away_team': m['id_away_team']
             })
 
+    # GOLES DEL PARTIDO
+    match_goals = []
+    if match['finished'] == 1:
+        goals_data = conn.execute('''
+            SELECT g.minute, g.team_id, g.first_name, g.last_name, g.own_goal,
+                   (SELECT last_name FROM player_match_details WHERE player_id = g.assist_id AND match_id = g.match_id) as assist_name 
+            FROM goals g
+            WHERE g.match_id = ? ORDER BY CAST(g.minute as INTEGER) ASC
+        ''', (str(match_id),)).fetchall()
+        for g in goals_data:
+            tid = str(g['team_id'])
+            scorer = g['last_name']
+            
+            if g['own_goal']:
+                scorer += " (EC)"
+                # Asignar al equipo contrario
+                if tid == str(match['id_home_team']):
+                    tid = str(match['id_away_team'])
+                else:
+                    tid = str(match['id_home_team'])
+            
+            match_goals.append({
+                'minute': g['minute'], 'team_id': tid, 
+                'scorer': scorer, 'assist': g['assist_name']
+            })
+
     conn.close()
-    return render_template_string(DETAIL_HTML, match=match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf, h2h_matches=h2h_matches, ref_history=ref_history, l5_home=l5_home, l5_away=l5_away, last_match_home=last_match_home, last_match_away=last_match_away, h_mid=h_mid, a_mid=a_mid)
+    return render_template_string(DETAIL_HTML, match=match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf, h2h_matches=h2h_matches, ref_history=ref_history, l5_home=l5_home, l5_away=l5_away, last_match_home=last_match_home, last_match_away=last_match_away, h_mid=h_mid, a_mid=a_mid, match_goals=match_goals)
 
 @app.route('/api/team_ranking/<team_id>')
 def api_team_ranking(team_id):
@@ -743,7 +814,8 @@ def api_player_stats():
     limit_matches = request.args.get('limit_matches', type=int)
     order_by = request.args.get('order_by', 'total')
     if limit_matches:
-        data = get_league_player_stats_last_matches(rank_type, filter_type, order_by=order_by, match_limit=limit_matches)
+        limit = request.args.get('limit', type=int) or 100
+        data = get_league_player_stats_last_matches(rank_type, filter_type, order_by=order_by, match_limit=limit_matches, limit=limit)
     else:
         limit = request.args.get('limit', type=int) or 100
         data = get_league_player_stats(rank_type, filter_type, order_by=order_by, limit=limit)
@@ -783,11 +855,11 @@ def player_info(player_id, match_id):
             SELECT 
                 COUNT(*) as pj, SUM(minutes_played) as mins,
                 SUM(fouls_committed) as f_c, SUM(fouls_received) as f_r,
-                (SELECT COUNT(*) FROM shots WHERE player_id = ? AND match_id IN ({ids_str})) as shots,
-                (SELECT COUNT(*) FROM shots WHERE player_id = ? AND match_id IN ({ids_str}) AND on_target=1) as target,
-                (SELECT COUNT(*) FROM shots WHERE player_id = ? AND match_id IN ({ids_str}) AND inside_box=0) as long,
-                (SELECT COUNT(*) FROM shots WHERE player_id = ? AND match_id IN ({ids_str}) AND shot_type='Header') as headers,
-                (SELECT COUNT(*) FROM cards WHERE player_id = ? AND match_id IN ({ids_str})) as cards
+                (SELECT COUNT(*) FROM shots WHERE player_id = ? AND match_id IN ({ids_str}) AND own_goal=0) as shots,
+                (SELECT COUNT(*) FROM shots_on_target WHERE player_id = ? AND match_id IN ({ids_str}) AND own_goal=0) as target,
+                (SELECT COUNT(*) FROM shots WHERE player_id = ? AND match_id IN ({ids_str}) AND inside_box=0 AND own_goal=0) as long,
+                (SELECT COUNT(*) FROM shots WHERE player_id = ? AND match_id IN ({ids_str}) AND shot_type='Header' AND own_goal=0) as headers,
+                (SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE player_id = ? AND match_id IN ({ids_str})) as cards
             FROM player_match_details WHERE player_id = ? AND match_id IN ({ids_str})
         ''', (player_id, player_id, player_id, player_id, player_id, player_id)).fetchone()
         return dict(s)
@@ -797,13 +869,13 @@ def player_info(player_id, match_id):
         # Definimos los componentes de cada metrica
         # Estructura: (Etiqueta, Tabla/Join, Funcion Agregada, Filtro extra)
         metrics = [
-            ("Tiros Totales", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", []),
-            ("Tiros al Arco", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", ["s.on_target=1"]),
-            ("Tiros Lejanos", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", ["s.inside_box=0"]),
+            ("Tiros Totales", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", ["s.own_goal=0"]),
+            ("Tiros al Arco", "shots_on_target s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", ["s.own_goal=0"]),
+            ("Tiros Lejanos", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", ["s.inside_box=0", "s.own_goal=0"]),
             ("Faltas Cometidas", "player_match_details p", "SUM(p.fouls_committed)", []),
             ("Faltas Recibidas", "player_match_details p", "SUM(p.fouls_received)", []),
-            ("Tarjetas", "cards c JOIN player_match_details p ON c.player_id = p.player_id AND c.match_id = p.match_id", "COUNT(*)", []),
-            ("Cabezazos", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", ["s.shot_type='Header'"])
+            ("Tarjetas", "cards c JOIN player_match_details p ON c.player_id = p.player_id AND c.match_id = p.match_id", "COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0)", []),
+            ("Cabezazos", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", ["s.shot_type='Header'", "s.own_goal=0"])
         ]
         
         scopes = {
@@ -875,7 +947,7 @@ def player_info(player_id, match_id):
 
     return jsonify({
         "team_id": str(info['team_id']),
-        "name": info["player_name"],
+        "name": f"{info['first_name']} {info['last_name']}",
         "team": info["home_team"] if str(info["team_id"]) == str(info["id_home_team"]) else info["away_team"],
         "pos": "Delantero" if info["position"] == "DL" else "Mediocampista" if info["position"] == "M" else "Defensor" if info["position"] == "DF" else "Arquero" if info["position"] == "ARQ" else "Desconocido",
         "number": info["shirt_number"],
@@ -913,13 +985,22 @@ def search_players(team_id):
     conn = get_db_connection()
     # Busca jugadores unicos por nombre que hayan jugado en ese equipo
     players = conn.execute('''
-        SELECT DISTINCT player_id, player_name, position 
+        SELECT player_id, first_name, last_name, position, MAX(shirt_number) as shirt_number 
         FROM player_match_details 
-        WHERE team_id = ? AND player_name LIKE ? 
+        WHERE team_id = ? AND (first_name || ' ' || last_name) LIKE ? 
+        GROUP BY player_id
         LIMIT 8
     ''', (str(team_id), f'%{q}%')).fetchall()
     conn.close()
-    return jsonify([dict(p) for p in players])
+    res = []
+    for p in players:
+        d = dict(p)
+        d['player_name'] = f"{d['first_name']} {d['last_name']}"
+        d['last_name'] = d['last_name']
+        d['number'] = d['shirt_number']
+        d['id'] = str(d['player_id'])
+        res.append(d)
+    return jsonify(res)
 
 @app.route('/team/<team_id>')
 def team_page(team_id):
@@ -971,8 +1052,8 @@ def referee_page(name):
         f_h = conn.execute('SELECT SUM(fouls_committed) FROM player_match_details WHERE match_id=? AND team_id=?', (mid, str(m['id_home_team']))).fetchone()[0] or 0
         f_v = conn.execute('SELECT SUM(fouls_committed) FROM player_match_details WHERE match_id=? AND team_id=?', (mid, str(m['id_away_team']))).fetchone()[0] or 0
         # Tarjetas por equipo
-        c_h = conn.execute('SELECT COUNT(*) FROM cards WHERE match_id=? AND team_id=?', (mid, str(m['id_home_team']))).fetchone()[0] or 0
-        c_v = conn.execute('SELECT COUNT(*) FROM cards WHERE match_id=? AND team_id=?', (mid, str(m['id_away_team']))).fetchone()[0] or 0
+        c_h = conn.execute("SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE match_id=? AND team_id=?", (mid, str(m['id_home_team']))).fetchone()[0]
+        c_v = conn.execute("SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE match_id=? AND team_id=?", (mid, str(m['id_away_team']))).fetchone()[0]
         
         row = dict(m)
         row['stats'] = {'h_fouls': f_h, 'v_fouls': f_v, 'h_cards': c_h, 'v_cards': c_v}
@@ -990,7 +1071,7 @@ def referee_page(name):
 
     def get_top_teams(metric_type):
         if metric_type == 'cards':
-            q = 'SELECT team_id, COUNT(*) as tot, COUNT(DISTINCT match_id) as pj FROM cards WHERE match_id IN (SELECT id FROM matches WHERE referee=?) GROUP BY team_id ORDER BY tot DESC LIMIT 5'
+            q = "SELECT team_id, COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as tot, COUNT(DISTINCT match_id) as pj FROM cards WHERE match_id IN (SELECT id FROM matches WHERE referee=?) GROUP BY team_id ORDER BY tot DESC LIMIT 5"
         elif metric_type == 'fouls_committed':
             q = 'SELECT team_id, SUM(fouls_committed) as tot, COUNT(DISTINCT match_id) as pj FROM player_match_details WHERE match_id IN (SELECT id FROM matches WHERE referee=?) GROUP BY team_id ORDER BY tot DESC LIMIT 5'
         else: # fouls_received
@@ -1137,7 +1218,7 @@ INDEX_HTML = '''
                     <div class="flex flex-col items-center">
                         <label class="text-[9px] font-black uppercase text-sky-400 mb-1 tracking-[0.2em]">Jornada</label>
                         <select name="gameweek" id="gameweek-select" onchange="this.form.submit()" class="bg-transparent text-white text-sm font-bold outline-none cursor-pointer">
-                            {% for i in range(1, 29) %}
+                            {% for i in range(1, 21) %}
                             <option value="{{ i }}" {% if current_gameweek|int == i %}selected{% endif %} class="bg-slate-900">Fecha {{ i }}</option>
                             {% endfor %}
                         </select>
@@ -1263,7 +1344,6 @@ STATS_HTML = '''
     <meta charset="UTF-8"><title>ARG STATS</title>
     <meta name="author" content="MartinezGalo & francoqdev">
     <meta name="copyright" content="ARG STATS">
-
     <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -1272,179 +1352,327 @@ STATS_HTML = '''
         .custom-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
         .custom-scroll::-webkit-scrollbar-thumb:hover { background: #0ea5e9; }
+        .btn-active { background-color: #0ea5e9; color: white; border-color: transparent; box-shadow: 0 10px 15px -3px rgba(14, 165, 233, 0.3); }
+        .btn-inactive { background-color: #1e293b; color: #94a3b8; border-color: #334155; }
+        .btn-inactive:hover { color: white; border-color: #475569; }
     </style>
 </head>
 <body class="p-8 pb-0 font-sans">
+    <div class="max-w-[1500px] mx-auto">
+        <!-- HEADER -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-4 gap-6">
+            <a href="/"><h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1></a>
+            <nav>
+                <a href="/" class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">← Volver</a>
+            </nav>
+        </header>
+
+        <!-- CONTROLES -->
+        <div class="flex flex-col items-center gap-4 mt-2 mb-4 bg-slate-900/80 p-4 rounded-b-[2rem] border-t border-slate-200 backdrop-blur-xl shadow-2xl">
+            
+            <!-- 1. MODO (Equipos | Jugadores | Arbitros) -->
+            <div class="flex bg-slate-800 p-1.5 rounded-2xl border border-slate-700 shadow-lg">
+                <button onclick="setMode('teams')" id="btn-mode-teams" class="px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all">Equipos</button>
+                <button onclick="setMode('players')" id="btn-mode-players" class="px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all">Jugadores</button>
+                <button onclick="setMode('referees')" id="btn-mode-referees" class="px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all">Arbitros</button>
+            </div>
+
+            <!-- 2. CATEGORIA -->
+            <div class="flex flex-wrap justify-center gap-2">
+                <button onclick="setCategory('shots')" id="btn-cat-shots" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Tiros</button>
+                <button onclick="setCategory('goals')" id="btn-cat-goals" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Goles</button>
+                <button onclick="setCategory('headers')" id="btn-cat-headers" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Cabezazos</button>
+                <button onclick="setCategory('cards')" id="btn-cat-cards" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Tarjetas</button>
+                <button onclick="setCategory('fouls')" id="btn-cat-fouls" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Faltas</button>
+                <button onclick="setCategory('fouls_received')" id="btn-cat-fouls_received" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Faltas Rec.</button>
+            </div>
+
+            <!-- 3. SUB-FILTRO (Solo Tiros) -->
+            <div id="subfilter-container" class="hidden flex gap-2 animate-fade-in-down">
+                <button onclick="setSubFilter('all')" id="btn-sub-all" class="sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all">Todos</button>
+                <button onclick="setSubFilter('target')" id="btn-sub-target" class="sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all">Al Arco</button>
+                <button onclick="setSubFilter('long')" id="btn-sub-long" class="sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all">Lejos</button>
+            </div>
+        </div>
+
+        <!-- RESULTADOS -->
+        <div id="grid-container" class="grid gap-2">
+            <!-- El contenido se inyecta via JS -->
+        </div>
+    </div>
+
     <script>
-    // Funcion de color solicitada
-    function getPosColorClass(v) { 
-        if (v === 'N/A') return 'text-slate-500';
-        const n = parseInt(v);
-        if (n > 20) return 'text-red-500'; 
-        if (n > 10) return 'text-blue-500'; 
-        return 'text-green-500'; 
-    }
+    const TEAM_MAP = {{ team_map|safe }};
+    function getShortName(name) { return TEAM_MAP[name] || name; }
 
-    const teamStatsData = [
-        { section: 'Analisis de Tiros', cols: 3, stats: [
-            { title: 'Tiros Realizados', data: {{ s_m_all|tojson }}, api: {category: 'shots', filter: 'all', side: 'made'} },
-            { title: 'Tiros al Arco', data: {{ s_m_tar|tojson }}, api: {category: 'shots', filter: 'target', side: 'made'} },
-            { title: 'Tiros de Lejos', data: {{ s_m_lng|tojson }}, api: {category: 'shots', filter: 'long', side: 'made'} },
-            { title: 'Tiros Recibidos', data: {{ s_a_all|tojson }}, api: {category: 'shots', filter: 'all', side: 'against'} },
-            { title: 'Recibidos al Arco', data: {{ s_a_tar|tojson }}, api: {category: 'shots', filter: 'target', side: 'against'} },
-            { title: 'Recibidos de Lejos', data: {{ s_a_lng|tojson }}, api: {category: 'shots', filter: 'long', side: 'against'} }
-        ]},
-        { section: 'Duelos y Disciplina', cols: 2, stats: [
-            { title: 'Cabezazos Propios', data: {{ h_m|tojson }}, api: {category: 'headers', filter: 'all', side: 'made'} },
-            { title: 'Cabezazos Recibidos', data: {{ h_a|tojson }}, api: {category: 'headers', filter: 'all', side: 'against'} },
-            { title: 'Tarjetas Recibidas (Equipo)', data: {{ c_m|tojson }}, api: {category: 'cards', filter: 'all', side: 'made'} },
-            { title: 'Tarjetas Generadas', data: {{ c_a|tojson }}, api: {category: 'cards', filter: 'all', side: 'against'} },
-            { title: 'Faltas Cometidas', data: {{ f_m|tojson }}, api: {category: 'fouls', filter: 'all', side: 'made'} },
-            { title: 'Faltas Recibidas', data: {{ f_a|tojson }}, api: {category: 'fouls', filter: 'all', side: 'against'} }
-        ]},
-        { section: 'Rankings de arbitros', cols: 2, stats: [
-            { title: 'arbitros: Cobradores (Faltas)', data: {{ ref_f|tojson }}, api: {type: 'referee', category: 'fouls'} },
-            { title: 'arbitros: Tarjeteros (Tarjetas)', data: {{ ref_c|tojson }}, api: {type: 'referee', category: 'cards'} }
-        ]}
-    ];
+    // Estado Global
+    const state = {
+        mode: 'teams', // teams, players, referees
+        category: 'shots', // shots, headers, cards, fouls
+        subFilter: 'all', // all, target, long
+    };
 
-    const playerStatsData = [
-        { section: 'Top Jugadores - Ataque', cols: 3, stats: [
-            { title: 'Tiros Totales', data: {{ p_shots_all|tojson }}, api: {type: 'player', rank_type: 'shots', filter: 'all'} },
-            { title: 'Tiros al Arco', data: {{ p_shots_tar|tojson }}, api: {type: 'player', rank_type: 'shots', filter: 'target'} },
-            { title: 'Tiros desde Lejos', data: {{ p_shots_lng|tojson }}, api: {type: 'player', rank_type: 'shots', filter: 'long'} }
-        ]},
-        { section: 'Top Jugadores - Juego Fisico', cols: 2, stats: [
-            { title: 'Cabezazos', data: {{ p_headers|tojson }}, api: {type: 'player', rank_type: 'headers', filter: 'all'} },
-            { title: 'Tarjetas', data: {{ p_cards|tojson }}, api: {type: 'player', rank_type: 'cards', filter: 'all'} },
-            { title: 'Faltas Cometidas', data: {{ p_fouls|tojson }}, api: {type: 'player', rank_type: 'fouls', filter: 'all'} },
-            { title: 'Faltas Recibidas', data: {{ p_fouls_rec|tojson }}, api: {type: 'player', rank_type: 'fouls_received', filter: 'all'} }
-        ]}
-    ];
+    // Estado Individual por Grid
+    const gridState = {
+        made: { sort: 'total', l5: false },
+        against: { sort: 'total', l5: false },
+        single: { sort: 'total', l5: false }
+    };
 
-    let currentMode = 'teams';
-    let pages = {};
+    const pages = { made: 1, against: 1, single: 1 };
+    const dataCache = { made: [], against: [], single: [] };
+    const perPage = 10;
 
-    window._statLast5 = {};
-    window._statSort = {};
-    window._statMap = {};
-
-    function switchMode(mode) {
-        currentMode = mode;
-        
-        // DESACTIVAR TODOS los botones de ultimos 5 al cambiar de modo
-        if (window._statMap) {
-            Object.keys(window._statMap).forEach(id => {
-                const stat = window._statMap[id];
-                if (stat._origData) stat.data = JSON.parse(JSON.stringify(stat._origData));
-                pages[id] = 1;
-            });
+    // Diccionarios de etiquetas
+    const LABELS = {
+        teams: {
+            shots: { made: 'Tiros Realizados', against: 'Tiros Recibidos' },
+            goals: { made: 'Goles a Favor', against: 'Goles en Contra' },
+            headers: { made: 'Cabezazos Realizados', against: 'Cabezazos Recibidos' },
+            cards: { made: 'Tarjetas Recibidas', against: 'Tarjetas Generadas (Rival)' },
+            fouls: { made: 'Faltas Cometidas', against: 'Faltas Recibidas)' }
+        },
+        players: {
+            shots: 'Rematadores',
+            goals: 'Goleadores',
+            headers: 'Cabezazos',
+            cards: 'Tarjetas Recibidas',
+            fouls: 'Faltas Cometidas',
+            fouls_received: 'Faltas Recibidas'
+        },
+        referees: {
+            cards: 'Arbitros con mas Tarjetas',
+            fouls: 'Arbitros con mas Faltas'
         }
-        window._statLast5 = {}; // Limpia el estado de botones activos
-        window._statSort = {}; // Reset sorting
+    };
 
-        document.getElementById('btn-teams').className = mode === 'teams' ? 'px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg' : 'px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white';
-        document.getElementById('btn-players').className = mode === 'players' ? 'px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg' : 'px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white';
-        
-        renderAll();
+    function init() {
+        updateUI();
+        fetchData();
     }
 
-    function renderAll() {
-        const root = document.getElementById('stats-grid-root');
-        const dataGroups = currentMode === 'teams' ? teamStatsData : playerStatsData;
-        root.innerHTML = '';
-
-        dataGroups.forEach((group, gIdx) => {
-            const section = document.createElement('div');
-            section.innerHTML = `<h2 class="text-2xl font-black uppercase italic tracking-tighter mb-8 border-l-4 border-sky-500 pl-4 text-slate-300">${group.section}</h2>`;
-            
-            const grid = document.createElement('div');
-            grid.className = `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-${group.cols || 3} gap-6`;
-            
-            group.stats.forEach((stat, sIdx) => {
-                const id = `box-${gIdx}-${sIdx}`;
-                if (!pages[id]) pages[id] = 1;
-                const container = document.createElement('div');
-                container.id = id;
-                grid.appendChild(container);
-                renderStatBox(container, stat, id);
-            });
-            section.appendChild(grid);
-            root.appendChild(section);
+    function resetGridState() {
+        ['made', 'against', 'single'].forEach(k => {
+            gridState[k] = { sort: 'total', l5: false };
         });
     }
 
-    // Modificacion en renderStatBox para mostrar el equipo del jugador
-    function renderStatBox(container, stat, id) 
-    {
-        const perPage = 10;
-        const page = pages[id] || 1;
-        const start = (page - 1) * perPage;
-        const visibleData = stat.data.slice(start, start + perPage);
-        const totalPages = Math.ceil(stat.data.length / perPage) || 1;
+    function setMode(m) { 
+        state.mode = m; 
+        resetGridState(); 
+        
+        if (m === 'referees') {
+            state.category = 'cards';
+        } else {
+            state.category = 'shots';
+            state.subFilter = 'all';
+        }
+        
+        updateUI(); 
+        fetchData(); 
+    }
+    function setCategory(c) { state.category = c; resetGridState(); updateUI(); fetchData(); }
+    function setSubFilter(s) { state.subFilter = s; updateUI(); fetchData(); }
+    
+    function toggleSort(id) { 
+        gridState[id].sort = (gridState[id].sort === 'total' ? 'avg' : 'total'); 
+        fetchData(id); 
+    }
+    
+    function toggleL5(id) { 
+        gridState[id].l5 = !gridState[id].l5; 
+        fetchData(id); 
+    }
 
-        // Guardamos el objeto `stat` por id para no serializarlo en los atributos onclick
-        window._statMap = window._statMap || {};
-        window._statMap[id] = stat;
-        window._statMap[id]._origData = window._statMap[id]._origData || JSON.parse(JSON.stringify(stat.data));
-        window._statLast5 = window._statLast5 || {};
-        const last5Active = !!window._statLast5[id];
-        const sort = (window._statSort && window._statSort[id]) || 'total';
+    function updateUI() {
+        // Modo
+        ['teams', 'players', 'referees'].forEach(m => {
+            const btn = document.getElementById(`btn-mode-${m}`);
+            if (state.mode === m) {
+                btn.className = 'px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-active';
+            } else {
+                btn.className = 'px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-inactive';
+            }
+        });
+
+        // Categorias
+        const cats = ['shots','goals', 'headers', 'cards', 'fouls', 'fouls_received'];
+        cats.forEach(c => {
+            const btn = document.getElementById(`btn-cat-${c}`);
+            let show = true;
+            
+            // Logic for visibility
+            if (state.mode === 'referees' && (c === 'shots' || c === 'goals' || c === 'headers' || c === 'fouls_received')) show = false;
+            if (state.mode === 'teams' && c === 'fouls_received') show = false;
+
+            if (!show) {
+                btn.style.display = 'none';
+            } else {
+                btn.style.display = 'inline-block';
+                if (state.category === c) {
+                    btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-active';
+                } else {
+                    btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-inactive';
+                }
+            }
+        });
+        
+        if (state.mode === 'referees' && (state.category === 'shots' || state.category === 'headers' || state.category === 'fouls_received')) {
+            state.category = 'cards';
+            updateUI();
+            return;
+        }
+
+        const subDiv = document.getElementById('subfilter-container');
+        if (state.category === 'shots') {
+            subDiv.classList.remove('hidden');
+            ['all', 'target', 'long'].forEach(s => {
+                const btn = document.getElementById(`btn-sub-${s}`);
+                if (state.subFilter === s) {
+                    btn.className = 'sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all bg-sky-500 text-white border-transparent shadow-md';
+                } else {
+                    btn.className = 'sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all bg-slate-800 text-slate-400 border-slate-700 hover:text-white';
+                }
+            });
+        } else {
+            subDiv.classList.add('hidden');
+        }
+    }
+
+    let currentFetchId = 0;
+
+    async function fetchData(targetId = null) {
+        const fetchId = ++currentFetchId;
+        const grid = document.getElementById('grid-container');
+        
+        // Ensure correct grid structure
+        if (state.mode === 'teams') {
+            if (!document.getElementById('box-container-made')) renderDoubleGrid();
+        } else {
+            if (!document.getElementById('box-container-single')) renderSingleGrid();
+        }
+        
+        // Loading State (Targeted)
+        const targets = targetId ? [targetId] : (state.mode === 'teams' ? ['made', 'against'] : ['single']);
+        targets.forEach(id => {
+            const el = document.getElementById(`box-container-${id}`);
+            if(el) el.style.opacity = '0.5';
+        });
+
+        try {
+            if (state.mode === 'teams') {
+                const reqs = [];
+                // Si targetId es null, traemos todo. Si no, solo el que cambio.
+                if (!targetId || targetId === 'made') {
+                    const s = gridState.made;
+                    pages.made = 1;
+                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=made&limit=${s.l5?5:''}&order_by=${s.sort}`).then(r=>r.json()).then(d => { dataCache.made = d; }));
+                }
+                if (!targetId || targetId === 'against') {
+                    const s = gridState.against;
+                    pages.against = 1;
+                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=against&limit=${s.l5?5:''}&order_by=${s.sort}`).then(r=>r.json()).then(d => { dataCache.against = d; }));
+                }
+                
+                await Promise.all(reqs);
+                if (currentFetchId !== fetchId) return;
+
+                if (state.mode === 'teams') {
+                   // Re-render boxes
+                   if (!targetId || targetId === 'made') renderBox(document.getElementById('box-container-made'), 'made', LABELS.teams[state.category].made, true);
+                   if (!targetId || targetId === 'against') renderBox(document.getElementById('box-container-against'), 'against', LABELS.teams[state.category].against, true);
+                }
+
+            } else {
+                const s = gridState.single;
+                pages.single = 1;
+                let url = '';
+                if (state.mode === 'players') {
+                    // Limite a 100 (10 paginas de 10)
+                    url = `/api/player_stats?rank_type=${state.category}&filter=${state.subFilter}&order_by=${s.sort}&limit=50`;
+                    if (s.l5) url += '&limit_matches=5';
+                } else {
+                    url = `/api/referee_stats?category=${state.category}&order_by=${s.sort}`;
+                    if (s.l5) url += '&limit=5';
+                }
+                
+                const data = await fetch(url).then(r => r.json());
+                if (currentFetchId !== fetchId) return;
+                dataCache.single = data;
+                
+                if (state.mode !== 'teams') {
+                   renderBox(document.getElementById('box-container-single'), 'single', LABELS[state.mode][state.category], false);
+                }
+            }
+        } catch (e) {
+            if (currentFetchId !== fetchId) return;
+            console.error(e);
+            grid.innerHTML = '<div class="text-center text-red-500 py-20 font-bold col-span-2">Error al cargar datos.</div>';
+        } finally {
+            if (currentFetchId === fetchId) {
+                targets.forEach(id => {
+                    const el = document.getElementById(`box-container-${id}`);
+                    if(el) el.style.opacity = '1';
+                });
+            }
+        }
+    }
+
+    function renderDoubleGrid() {
+        const grid = document.getElementById('grid-container');
+        grid.className = 'grid grid-cols-1 lg:grid-cols-2 gap-8';
+        grid.innerHTML = '<div id="box-container-made"></div><div id="box-container-against"></div>';
+        // Los datos pueden no estar listos, renderBox maneja array vacio
+        renderBox(document.getElementById('box-container-made'), 'made', LABELS.teams[state.category].made, true);
+        renderBox(document.getElementById('box-container-against'), 'against', LABELS.teams[state.category].against, true);
+    }
+
+    function renderSingleGrid() {
+        const grid = document.getElementById('grid-container');
+        grid.className = 'grid grid-cols-1 gap-8 max-w-4xl mx-auto w-full';
+        grid.innerHTML = '<div id="box-container-single"></div>';
+        renderBox(document.getElementById('box-container-single'), 'single', LABELS[state.mode][state.category], false);
+    }
+
+    function changeLocalPage(id, delta) {
+        const total = Math.ceil(dataCache[id].length / perPage) || 1;
+        let next = pages[id] + delta;
+        if (next >= 1 && next <= total) {
+            pages[id] = next;
+            const container = document.getElementById(`box-container-${id}`);
+            renderBox(container, id, container.dataset.title, container.dataset.isteam === 'true');
+        }
+    }
+
+    function renderBox(container, id, title, isTeam) {
+        if (!container) return;
+        container.dataset.title = title;
+        container.dataset.isteam = isTeam;
+        const data = dataCache[id] || [];
+        const page = pages[id];
+        const start = (page - 1) * perPage;
+        const visible = data.slice(start, start + perPage);
+        const totalPages = Math.ceil(data.length / perPage) || 1;
+        const s = gridState[id];
 
         container.innerHTML = `
-            <div class="bg-slate-800/40 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col h-full overflow-hidden">
-                <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700/50 flex justify-between items-center gap-2">
-                    <h3 class="font-black text-sky-400 uppercase text-[13px] tracking-widest flex-1">${stat.title}</h3>
-                    ${stat.api ? `
-                        <button id="sort-btn-${id}" onclick='toggleSort("${id}")' class="text-[10px] font-black uppercase px-3 py-1 rounded-full border ${sort === 'avg' ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400'}">
-                           ${sort === 'avg' ? 'Prom' : 'Total'}
-                        </button>
-                        <button id="l5-btn-${id}" onclick='toggleStatLast5("${id}")' class="text-[10px] font-black uppercase px-3 py-1 rounded-full border ${last5Active ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400'}">Ultimos 5</button>
-                    ` : ''}
+            <div class="bg-slate-800/40 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col overflow-hidden">
+                <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700/50 flex justify-between items-center">
+                    <h3 class="font-black text-sky-400 uppercase text-[15px] tracking-widest">${title}</h3>
+                    <div class="flex gap-2">
+                        <button onclick="toggleSort('${id}')" class="text-[11px] font-black uppercase px-3 py-1 rounded-full border ${s.sort==='avg'?'bg-sky-500 text-white border-transparent':'bg-slate-900 text-slate-500 border-slate-700'}">Promedio</button>
+                        <button onclick="toggleL5('${id}')" class="text-[11px] font-black uppercase px-3 py-1 rounded-full border ${s.l5?'bg-sky-500 text-white border-transparent':'bg-slate-900 text-slate-500 border-slate-700'}">Ultimos 5</button>
+                    </div>
                 </div>
-
-                <div class="p-4 flex-1 space-y-2">
-                    ${visibleData.map((item, i) => `
-                        <div class="flex justify-between items-center bg-slate-900/40 p-2  rounded-xl border border-slate-800/50 hover:border-slate-700 transition-all">
-                            <div class="flex flex-col truncate">
-                                <span class="text-[13px] font-bold text-slate-100 truncate flex items-center">
-                                    <b class="${getPosColorClass(start + i + 1)} mr-2">#${start + i + 1}</b>
-                                    ${currentMode === 'players' ? item.name : item.id ? `
-                                        <img src="/static/${item.id}_xsmall.png" onerror="this.onerror=null; this.src='/static/none.png'" class="w-6 h-6 object-contain inline-block mr-2">
-                                        <a href="/team/${item.id}" class=" text-[15px] hover:text-sky-400">${item.name}</a>
-                                    ` : `<a href="/referee/${item.name}" class=" text-[15px] hover:text-sky-400">${item.name}</a>`}
-                                </span>
-                                ${currentMode === 'players' ? `
-                                    <a href="/team/${item.t_id}" class="text-[12px] font-black text-sky-500 uppercase mt-0.5 hover:underline decoration-sky-500/50 underline-offset-2 flex items-center gap-1">
-                                        <img src="/static/${item.t_id}_xsmall.png" onerror="this.onerror=null; this.src='/static/none.png'" class="w-4 h-4 object-contain">
-                                        ${item.t_name}
-                                    </a>
-                                ` : ''}
-                                <div class="flex gap-3 text-[12px] font-black text-slate-500 uppercase mt-1">
-                                    <span>Total: <b class=" text-[14px] text-slate-300">${item.total}</b></span>
-                                    <span>PJ: <b class="text-[14px] text-slate-300">${item.pj}</b></span>
-                                    ${item.minutes_played ? `<span>Min: <b class="text-[14px] text-slate-300">${item.minutes_played}</b></span>` : ''}                                    </div>
-                            </div>
-                            <div class="text-right ml-4">
-                                <span class="text-sm font-black text-emerald-400">${item.avg}</span>
-                                <div class="text-[10px] font-bold text-slate-500 uppercase">${currentMode === 'players' ? 'Por 90' : 'Prom'}</div>
-                            </div>
-                        </div>
-                    `).join('')}
+                <div class="py-2 flex-1 space-y-0">
+                    ${visible.map((item, i) => renderRow(item, start + i, isTeam)).join('') || '<div class="text-center text-slate-600 italic py-10">Sin datos</div>'}
                 </div>
-
                 <div class="p-4 bg-slate-900/30 border-t border-slate-700/30 flex justify-between items-center">
-                    <button onclick='changeLocalPage("${id}", -1)' 
-                            class="p-2 rounded-lg bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" 
-                            ${page === 1 ? 'disabled' : ''}>
+                    <button onclick="changeLocalPage('${id}', -1)" class="p-2 rounded-lg bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" ${page === 1 ? 'disabled' : ''}>
                         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
                     </button>
-                    
-                    <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">${page} / ${totalPages}</span>
-                    
-                    <button onclick='changeLocalPage("${id}", 1)' 
-                            class="p-2 rounded-lg bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" 
-                            ${page === totalPages ? 'disabled' : ''}>
+                    <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">${page} / ${totalPages}</span>
+                    <button onclick="changeLocalPage('${id}', 1)" class="p-2 rounded-lg bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" ${page === totalPages ? 'disabled' : ''}>
                         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                     </button>
                 </div>
@@ -1452,100 +1680,56 @@ STATS_HTML = '''
         `;
     }
 
-    function toggleSort(id) {
-        window._statSort = window._statSort || {};
-        window._statSort[id] = (window._statSort[id] === 'avg' ? 'total' : 'avg');
-        fetchDataForBox(id);
-    }
+    function renderRow(item, i, isTeam) {
+        let colorClass = 'text-slate-500';
+        const idx = i; // Posicion real (0-indexed)
+        const rank = idx + 1;
 
-    function toggleStatLast5(id) {
-        window._statLast5 = window._statLast5 || {};
-        window._statLast5[id] = !window._statLast5[id];
-        fetchDataForBox(id);
-    }
-
-    function fetchDataForBox(id) {
-        const container = document.getElementById(id);
-        const stat = window._statMap[id];
-        if (!stat || !stat.api) return;
-        
-        const btnL5 = document.getElementById(`l5-btn-${id}`);
-        const btnSort = document.getElementById(`sort-btn-${id}`);
-        const isL5 = window._statLast5 && window._statLast5[id];
-        const sort = (window._statSort && window._statSort[id]) || 'total';
-        
-        // Optimisation: if asking for default view (no L5, sort total), use cached _origData
-        if (!isL5 && sort === 'total' && stat._origData) {
-            stat.data = JSON.parse(JSON.stringify(stat._origData));
-            pages[id] = 1;
-            renderStatBox(container, stat, id);
-            return;
+        if (state.mode === 'teams' || isTeam) {
+            if (rank <= 10) colorClass = 'text-green-400';
+            else if (rank <= 20) colorClass = 'text-blue-400';
+            else if (rank <= 30) colorClass = 'text-red-400';
+        } else if (state.mode === 'players') {
+            if (rank <= 10) colorClass = 'text-green-400';
+            else colorClass = 'text-blue-400';
+        } else if (state.mode === 'referees') {
+            if (rank <= 5) colorClass = 'text-green-400';
+            else colorClass = 'text-blue-400';
         }
 
-        if(btnL5) btnL5.disabled = true;
-        if(btnSort) btnSort.disabled = true;
-        
-        let url = '';
-        if (stat.api.type === 'player') {
-            url = `/api/player_stats?rank_type=${stat.api.rank_type}&filter=${stat.api.filter}&order_by=${sort}`;
-            if(isL5) url += `&limit_matches=5`;
-        } else if (stat.api.type === 'referee') {
-            url = `/api/referee_stats?category=${stat.api.category}&order_by=${sort}`;
-            if(isL5) url += `&limit=5`;
+        let imgHtml = ''; let mainText = ''; let subText = ''; let link = '#';
+
+        if (state.mode === 'teams' || isTeam) {
+            imgHtml = `<img src="/static/${item.id}_xsmall.png" onerror="this.src='/static/none.png'" class="w-8 h-8 object-contain">`;
+            mainText = getShortName(item.name); link = `/team/${item.id}`;
+        } else if (state.mode === 'referees') {
+            mainText = item.name; link = `/referee/${item.name}`;
         } else {
-            url = `/api/team_stats?category=${stat.api.category}&filter=${stat.api.filter}&side=${stat.api.side}&order_by=${sort}`;
-            if(isL5) url += `&limit=5`;
+            mainText = item.name;
+            subText = `<a href="/team/${item.t_id}" class="text-[12px] text-sky-500 font-bold uppercase hover:underline flex items-center gap-1 mt-0.5"><img src="/static/${item.t_id}_xsmall.png" class="w-3 h-3 object-contain"> ${getShortName(item.t_name)}</a>`;
         }
-        
-        fetch(url)
-            .then(r => {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(data => {
-                const MAX_ITEMS = 100;
-                stat.data = Array.isArray(data) ? data.slice(0, MAX_ITEMS) : data;
-                pages[id] = 1;
-                renderStatBox(container, stat, id);
-            })
-            .catch(e => { console.error('Error fetching stats', e); alert('Error cargando stats (ver consola)'); })
-            .finally(() => { 
-                if(btnL5) btnL5.disabled = false; 
-                if(btnSort) btnSort.disabled = false;
-            });
+
+        return `
+            <div class="flex justify-between items-center bg-slate-900/40 p-2 rounded-xl border border-slate-800/50 hover:border-slate-700 transition-all group">
+                <div class="flex items-center gap-4 overflow-hidden">
+                    <span class="text-lg font-black ${colorClass} w-6 text-center">#${rank}</span>
+                    ${imgHtml}
+                    <div class="flex flex-col truncate">
+                        <a href="${link}" class="text-[15px] font-bold text-slate-200 group-hover:text-sky-400 transition-colors truncate">${mainText}</a>
+                        ${subText}
+                    </div>
+                </div>
+                
+
+                <span class="text-[13px] font-bold text-slate-500"><span class="text-[15px] font-black text-white">${item.total}</span> en
+                <span class="text-[15px] font-black text-white">${item.pj}</span> PJ | <span class="text-emerald-400">${item.avg}</span> / 90 </span>
+
+            </div>
+        `;
     }
 
-    function changeLocalPage(id, delta) {
-        if (!pages[id]) pages[id] = 1;
-        pages[id] += delta;
-        const container = document.getElementById(id);
-        const stat = (window._statMap && window._statMap[id]) || null;
-        if (!stat) return; // seguridad
-        renderStatBox(container, stat, id);
-    }
-
-    document.addEventListener('DOMContentLoaded', renderAll);
+    init();
     </script>
-    <div class="max-w-[1500px] mx-auto">
-        <!-- HEADER -->
-        <header class="flex flex-row justify-between items-center mb-16 gap-4">
-            <a href="/"><h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1></a>
-
-            <div class="flex bg-slate-800/50 p-1 rounded-2xl border border-slate-700 shadow-xl backdrop-blur-md">
-                <button id="btn-teams" onclick="switchMode('teams')" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg">Equipos</button>
-                <button id="btn-players" onclick="switchMode('players')" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Jugadores</button>
-            </div>
-
-            <nav>
-                <a href="/" class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">← Volver</a>
-            </nav>
-        </header>
-
-        <!-- CONTENEDOR GRID -->
-        <div id="stats-grid-root" class="space-y-20">
-            </div>
-    </div>
-</body>
 ''' + FOOTER_HTML + '''</body></html>'''
 
 TEAM_HTML = '''
@@ -1570,6 +1754,7 @@ TEAM_HTML = '''
         background: rgba(56, 189, 248, 0.05); 
     }
     #player-ranking-list {  min-height: 500px; display: flex; flex-direction: column; }
+    
 </style>
 <head>
     <meta charset="UTF-8">
@@ -1636,20 +1821,16 @@ TEAM_HTML = '''
             info.innerText = `${playerPage} / ${totalPages}`;
             
             list.innerHTML = visibleData.map(r => `
-                <div class="player-card ${r.is_transferred ? 'border-red-500/50' : 'border-slate-800'}" 
-                    data-pid="${r.player_id}">
+                <div class="player-card ${r.is_transferred ? 'border-red-500/50' : ''}" data-pid="${r.player_id}">
                     <div class="flex justify-between items-center gap-2">
                         <span class="font-bold truncate text-[14px] ${r.is_transferred ? 'text-red-400' : 'text-slate-200'}">
-                            ${r.name.split(' ').pop()} 
-                            <span class="text-slate-500 text-[11px] italic">(${r.pos})</span>
+                            <span class="text-sky-500 mr-1">#${r.number || '-'} </span>${r.name}<span class="text-slate-500 text-[11px] italic"> (${r.pos})</span>
                         </span>
-                        <span class="text-[12px] font-bold italic whitespace-nowrap ${r.is_transferred ? 'text-red-400' : 'text-slate-400'}">
-                            <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black">${r.val}</span> 
-                            ${r.unit} / ${r.pj} PJ
+                        <span class="text-[12px] font-bold italic whitespace-nowrap ${r.is_transferred ? 'text-red-400' : 'text-slate-400'} text-right">
+                            <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[14px]">${r.val}</span> ${r.unit} en <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[13px]">${r.pj}</span> PJ | <span class="text-emerald-400">${r.avg}</span> / 90
                         </span>
                     </div>
-                </div>
-            `).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-10">Sin datos.</p>';
+                </div>`).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-10">Sin datos.</p>';
         }
 
         // 3. Cambiar de pagina
@@ -1835,6 +2016,7 @@ TEAM_HTML = '''
                 <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
                     <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px]">
                         <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold rank-btn" id="btn-main">Tiros</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'goals', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Goles</button>
                         <button onclick="updateTeamRanking('{{ team_id }}', 'headers', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Cabezazos</button>
                         <button onclick="updateTeamRanking('{{ team_id }}', 'yellows', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Tarjetas</button>
                         <button onclick="updateTeamRanking('{{ team_id }}', 'fouls', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas</button>
@@ -1954,7 +2136,7 @@ REFEREE_HTML = '''
                             <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800">
                                 <div class="flex items-center gap-2 overflow-hidden">
                                     <img src="{{ url_for('static', filename=t.id ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
-                                    <span class="font-bold text-sm truncate">{{ get_short_name(t.name) }}</span>
+                                    <a href="/team/{{ t.id }}" class="font-bold text-sm truncate hover:text-yellow-500">{{ get_short_name(t.name) }}</a>
                                 </div>
                                 <span class="text-xs font-black"><span class="text-yellow-500 text-lg">{{ t.total }}</span> T en {{ t.pj }} PJ</span>
                             </div>
@@ -1970,7 +2152,7 @@ REFEREE_HTML = '''
                             <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800">
                                 <div class="flex items-center gap-2 overflow-hidden">
                                     <img src="{{ url_for('static', filename=t.id ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
-                                    <span class="font-bold text-sm truncate">{{ get_short_name(t.name) }}</span>
+                                    <a href="/team/{{ t.id }}" class="font-bold text-sm truncate hover:text-red-500">{{ get_short_name(t.name) }}</a>
                                 </div>
                                 <span class="text-xs font-black"><span class="text-red-500 text-lg">{{ t.total }}</span> F en {{ t.pj }} PJ</span>
                             </div>
@@ -1986,7 +2168,7 @@ REFEREE_HTML = '''
                             <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800">
                                 <div class="flex items-center gap-2 overflow-hidden">
                                     <img src="{{ url_for('static', filename=t.id ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
-                                    <span class="font-bold text-sm truncate">{{ get_short_name(t.name) }}</span>
+                                    <a href="/team/{{ t.id }}" class="font-bold text-sm truncate hover:text-emerald-500">{{ get_short_name(t.name) }}</a>
                                 </div>
                                 <span class="text-xs font-black"><span class="text-emerald-500 text-lg">{{ t.total }}</span> F en {{ t.pj }} PJ</span>
                             </div>
@@ -2035,6 +2217,8 @@ DETAIL_HTML = '''
         .selected-player { z-index: 50; }
         .lasso-selected { border-color: #38bdf8 !important; box-shadow: 0 0 15px #38bdf8 !important; z-index: 50; }
         .highlight-player { border-color: #f8fafc !important; box-shadow: 0 0 25px #f8fafc !important; transform: translate(-50%, -50%) scale(1.3) !important; z-index: 100; }
+        .sub-highlight-red {  box-shadow: 0 0 25px 10px #ef4444 !important; transform: translate(-50%, -50%) scale(1.3) !important; z-index: 100; }
+        .sub-highlight-green { box-shadow: 0 0 10px #22c55e !important; }
         .active-hover { border-color: #38bdf8 !important; background: rgba(56, 189, 248, 0.1) !important; }
         .card-badge { position: absolute; top: -5px; right: -5px; width: 12px; height: 16px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.3); }
         .card-Yellow { background-color: #fbbf24; } .card-Red { background-color: #ef4444; } .card-YellowRed { background: linear-gradient(135deg, #fbbf24 50%, #ef4444 50%); }
@@ -2233,7 +2417,7 @@ DETAIL_HTML = '''
                      onclick="handlePlayerClick(event, '${r.player_id}')">
                     <div class="flex justify-between items-center gap-2">
                         <span class="font-bold truncate text-[14px] ${r.is_transferred ? 'text-red-400' : 'text-slate-200'}">
-                            <span class="text-sky-500 mr-1">#${r.number || '-'} </span>${r.name.replace(/^\S+\s+/, "")}<span class="text-slate-500 text-[11px] italic"> (${r.pos})</span>
+                            <span class="text-sky-500 mr-1">#${r.number || '-'} </span>${r.name}<span class="text-slate-500 text-[11px] italic"> (${r.pos})</span>
                         </span>
                         <span class="text-[12px] font-bold italic whitespace-nowrap ${r.is_transferred ? 'text-red-400' : 'text-slate-400'} ${side === 'away' ? 'text-left' : 'text-right'}">
                             <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[14px]">${r.val}</span> ${r.unit} en <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[13px]">${r.pj}</span> PJ | <span class="text-emerald-400">${r.avg}</span> / 90
@@ -2488,21 +2672,27 @@ DETAIL_HTML = '''
             if (!p.dragging) openPlayer(p.dataset.pid); 
         }        
         let substituteTarget = null;
-        function closeSubstModal() { document.getElementById('subst-modal-overlay').classList.add('hidden'); }
+        function closeSubstModal() { 
+            document.getElementById('subst-modal-overlay').classList.add('hidden'); 
+            document.getElementById('subst-search').value = '';
+            document.getElementById('subst-results').innerHTML = '';
+        }
         
         function searchPlayers(q) {
             if(!q || q.length < 2) return;
             fetch(`/search_players/${substituteTarget.dataset.teamid}?q=${q}`).then(r => r.json()).then(data => {
-                document.getElementById('subst-results').innerHTML = data.map(p => `<div onclick="applySubstitution('${p.player_id}', '${p.player_name}', '${p.position}')" class="bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-sky-500 cursor-pointer flex justify-between"><span class="font-bold text-white">${p.player_name}</span><span class="text-slate-500 font-black">${p.position}</span></div>`).join('');
+                const currentPids = Array.from(document.querySelectorAll('.player-dot')).map(p => p.dataset.pid);
+                const filteredData = data.filter(p => !currentPids.includes(p.id));
+                document.getElementById('subst-results').innerHTML = filteredData.map(p => `<div onclick="applySubstitution('${p.player_id}', '${p.last_name}', '${p.number}')" class="bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-sky-500 cursor-pointer flex justify-between"><span class="font-bold text-white">${p.player_name}</span><span class="text-slate-500 font-black">${p.position}</span></div>`).join('');
             });
         }
 
-        function applySubstitution(pid, name, pos) { 
+        function applySubstitution(pid, name, number) { 
             substituteTarget.dataset.pid = pid; 
             substituteTarget.dataset.pname = name; 
             // Actualiza el texto de la posicion y el nombre visual
-            substituteTarget.childNodes[0].nodeValue = pos; 
-            substituteTarget.querySelector('.player-name').innerText = name.split(' ').pop(); 
+            substituteTarget.childNodes[0].nodeValue = number; 
+            substituteTarget.querySelector('.player-name').innerText = name; 
             closeSubstModal(); 
         }        
         document.addEventListener('contextmenu', e => { const p = e.target.closest('.player-dot'); if(p) { e.preventDefault(); lastCtxPid = p.dataset.pid; substituteTarget = p; document.getElementById('ctx-player-name').innerText = p.dataset.pname; const keyLabel = document.getElementById('ctx-key-label'); keyLabel.innerText = p.classList.contains('key-player') ? '❌ Quitar Marca' : '⭐ Marcar como Clave'; contextMenu.style.display = 'block'; contextMenu.style.left = e.clientX + 'px'; contextMenu.style.top = e.clientY + 'px'; } else contextMenu.style.display = 'none'; });
@@ -2547,6 +2737,33 @@ DETAIL_HTML = '''
         }
         function handleEnd() { isLassoing=false; selectionBox.style.display='none'; if(activePlayer) selectedPlayers.forEach(p => p.style.transition = ''); activePlayer=null; }
         
+        // Substitution Highlight Logic
+        function handleSubHover(e, el) {
+            const subId = el.dataset.subId;
+            if (subId) {
+                // Highlight sub in list
+                el.classList.add('sub-highlight-green');
+
+                // Highlight player on pitch
+                const pitchPlayer = document.querySelector(`.player-dot[data-pid="${subId}"]`);
+                if (pitchPlayer) {
+                    pitchPlayer.classList.add('sub-highlight-red');
+                }
+            }
+        }
+
+        function handleSubLeave(el) {
+            const subId = el.dataset.subId;
+            // Remove highlights
+            el.classList.remove('sub-highlight-green');
+            if (subId) {
+                const pitchPlayer = document.querySelector(`.player-dot[data-pid="${subId}"]`);
+                if (pitchPlayer) {
+                    pitchPlayer.classList.remove('sub-highlight-red');
+                }
+            }
+        }
+
         document.addEventListener('mousedown', handleStart);
         document.addEventListener('touchstart', handleStart, {passive: false});
         document.addEventListener('mousemove', handleMove);
@@ -2568,6 +2785,7 @@ DETAIL_HTML = '''
     </div>
 
     <div id="selection-box"></div>
+    <div id="substitution-tooltip"></div>
     <!-- MENU CONTEXTUAL -->
     <div id="context-menu">
         <div class="context-header" id="ctx-player-name">Jugador</div>
@@ -2582,7 +2800,7 @@ DETAIL_HTML = '''
         
         <!-- MARCADOR -->
         <div class="flex h-auto ">
-            <div class="bg-slate-950/80 w-[70%] max-w-6xl p-8 rounded-[3rem] border border-slate-700/50  shadow-inner  mx-auto text-center">
+            <div class="bg-slate-950/80 w-[70%] max-w-6xl p-8 pb-0 rounded-[3rem] border border-slate-700/50  shadow-inner  mx-auto text-center">
                 <div class="flex justify-around items-center gap-8 mb-4 text-center">
                     <h1 class="text-3xl font-black uppercase flex-1 tracking-tighter hover:text-sky-500 transition-colors">
                         <a href="/team/{{ match.id_home_team }}" class="flex flex-col items-center gap-4">
@@ -2598,7 +2816,38 @@ DETAIL_HTML = '''
                         </a>
                     </h1>
                 </div>
-                <div class="border-t border-slate-800 pt-4 mt-2"><span class="text-[12px] font-bold text-slate-300 uppercase tracking-widest italic">arbitro: {%if match.referee %} <a href="/referee/{{ match.referee }}" class="hover:text-sky-500">{{ match.referee}}</a> {% else %} Por designar {% endif %}</span></div>
+                <div class="border-t border-slate-800 py-4 "><span class="text-[12px] font-bold text-slate-300 uppercase tracking-widest italic">arbitro: {%if match.referee %} <a href="/referee/{{ match.referee }}" class="hover:text-sky-500">{{ match.referee}}</a> {% else %} Por designar {% endif %}</span></div>
+                
+                <!-- GOLES -->
+                {% if match_goals %}
+                <div class="grid grid-cols-[1fr_1px_1fr] gap-8 mt-0 border-t border-slate-800 justify-between">
+                    <!-- GOLES LOCAL -->
+                    <div class="space-y-2 p-4  text-right">
+                        {% for g in match_goals if g.team_id|string == match.id_home_team|string %}
+                        <div class="text-[14px] text-slate-300 grid grid-cols-[auto_auto] gap-x-2 justify-end items-center">
+                             <span class="font-black text-white">{{ g.scorer }}</span> 
+                             <span class="text-sky-500 font-bold">'{{ g.minute }}</span>
+                             {% if g.assist %}
+                             <div class="text-[11px] text-slate-500 font-bold italic mr-1 col-start-0">({{ g.assist }})</div>
+                             {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="h-full w-[0px] border-x border-slate-800"></div>
+                    <!-- GOLES VISITA -->
+                    <div class="space-y-2 p-4  text-left">
+                        {% for g in match_goals if g.team_id|string == match.id_away_team|string %}
+                        <div class="text-[14px] text-slate-300 grid grid-cols-[auto_auto] gap-x-2 justify-start items-center">
+                             <span class="text-sky-500 font-bold">'{{ g.minute }}</span>
+                             <span class="font-black text-white">{{ g.scorer }}</span> 
+                             {% if g.assist %}
+                             <div class="text-[11px] text-slate-500 font-bold italic ml-1 col-start-2">({{ g.assist }})</div>
+                             {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
             </div>
             <!-- NOTAS -->
             <div class="ml-4 mx-auto w-[35%]">
@@ -2620,10 +2869,15 @@ DETAIL_HTML = '''
                     <h4 class="text-[15px] font-black text-sky-400 uppercase italic mb-4 text-center tracking-widest border-b border-sky-400/20 pb-2">Banco Local</h4>
                     <div class="grid grid-cols-2 gap-1.5">
                         {% for p in home_subs %}
-                        <div class="bg-slate-900/50 p-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-800 transition-all list-item-hover-only" data-pid="{{ p.player_id }}" onmouseenter="highlightTarget('{{ p.player_id }}', true)" onmouseleave="highlightTarget('{{ p.player_id }}', false)" onclick="handlePlayerClick(event, '{{p.player_id}}')">
+                        <div class="bg-slate-900/50 p-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-800 transition-all list-item-hover-only" 
+                             data-pid="{{ p.player_id }}" 
+                             {%if p.substitution %}data-sub-id="{{ p.substitution }}"{% endif %}
+                             onmouseenter="handleSubHover(event, this)" 
+                             onmouseleave="handleSubLeave(this)" 
+                             onclick="handlePlayerClick(event, '{{p.player_id}}')">
                             <div class="flex justify-between items-center gap-1 w-full">
-                                <span class="font-bold truncate flex-1 text-[14px] text-slate-200"><span class="text-slate-500 mr-1">{{ p.shirt_number or '-' }}</span> {{ p.player_name.split(' ').pop() }} <span class="text-slate-500 font-medium text-[11px]">({{ p.position }})</span></span>
-                                <span class="{% if p.minutes_played > 0 %}text-emerald-500{% else %}text-slate-700{% endif %} font-black text-[12px] whitespace-nowrap">{{ p.minutes_played }}'</span>
+                                <span class="font-bold truncate flex-1 text-[14px] text-slate-200"><span class="text-slate-500 mr-1">{{ p.shirt_number or '-' }}</span> {{ p.player_name }} <span class="text-slate-500 font-medium text-[11px]">({{ p.position }})</span></span>
+                                {% if p.sub_minute %}<span class="text-emerald-500 font-black text-[12px] whitespace-nowrap">{{ p.sub_minute}}'</span>{% endif %} 
                             </div>
                         </div>
                         {% endfor %}
@@ -2676,8 +2930,8 @@ DETAIL_HTML = '''
             <div class="md:col-span-2 relative flex flex-col items-center">
                 <h2 class="text-[15px] font-black text-slate-300 uppercase italic mb-4 text-center tracking-widest border-b border-slate-500/20 pb-2">{{ lineup_label }}</h2>
                 <div class="pitch" id="soccer-pitch">
-                    {% for p in home_lineup %}<div class="player-dot bg-blue-500 draggable shadow-lg" style="bottom:{{ (p.role_x * 50) }}%; left:{{(1-p.role_y)*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="home" data-teamid="{{match.id_home_team}}" onclick="handlePlayerClick(event)">{{ p.shirt_number or p.position }}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name.split(' ').pop()}}</div></div>{% endfor %}
-                    {% for p in away_lineup %}<div class="player-dot bg-red-500 draggable shadow-lg" style="top:{{ (p.role_x * 50) }}%; left:{{p.role_y*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="away" data-teamid="{{match.id_away_team}}" onclick="handlePlayerClick(event)">{{ p.shirt_number or p.position }}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name.split(' ').pop()}}</div></div>{% endfor %}
+                    {% for p in home_lineup %}<div class="player-dot bg-blue-500 draggable shadow-lg" style="bottom:{{ (p.role_x * 50) }}%; left:{{(1-p.role_y)*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="home" data-teamid="{{match.id_home_team}}" onclick="handlePlayerClick(event)">{{ p.shirt_number or p.position }}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name}}</div></div>{% endfor %}
+                    {% for p in away_lineup %}<div class="player-dot bg-red-500 draggable shadow-lg" style="top:{{ (p.role_x * 50) }}%; left:{{p.role_y*100}}%;" data-pid="{{p.player_id}}" data-pname="{{p.player_name}}" data-side="away" data-teamid="{{match.id_away_team}}" onclick="handlePlayerClick(event)">{{ p.shirt_number or p.position }}{% if p.card %}<div class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name">{{p.player_name}}</div></div>{% endfor %}
                 </div>
                 <div class="flex items-center gap-4 mt-4">
                     <button id="lock-home-btn" onclick="toggleLock('home')" class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">L</button>
@@ -2692,10 +2946,15 @@ DETAIL_HTML = '''
                     <h4 class="text-[15px] font-black text-red-500 uppercase italic mb-4 text-center tracking-widest border-b border-red-500/20 pb-2">Banco Visita</h4>
                     <div class="grid grid-cols-2 gap-1.5">
                         {% for p in away_subs %}
-                        <div class="bg-slate-900/50 p-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-800 transition-all list-item-hover-only" data-pid="{{ p.player_id }}" onmouseenter="highlightTarget('{{ p.player_id }}', true)" onmouseleave="highlightTarget('{{ p.player_id }}', false)" onclick="handlePlayerClick(event, '{{p.player_id}}')">
+                        <div class="bg-slate-900/50 p-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-800 transition-all list-item-hover-only" 
+                             data-pid="{{ p.player_id }}" 
+                             {%if p.substitution %}data-sub-id="{{ p.substitution }}"{% endif %}
+                             onmouseenter="handleSubHover(event, this)" 
+                             onmouseleave="handleSubLeave(this)" 
+                             onclick="handlePlayerClick(event, '{{p.player_id}}')">
                             <div class="flex justify-between items-center gap-1 w-full flex-row-reverse">
-                                <span class="font-bold truncate flex-1 text-[14px] text-slate-200 text-right"><span class="text-slate-500 font-medium text-[11px]">({{ p.position }})</span> {{ p.player_name.split(' ').pop() }} <span class="text-slate-500 ml-1">{{ p.shirt_number or '-' }}</span></span>
-                                <span class="{% if p.minutes_played > 0 %}text-emerald-500{% else %}text-slate-700{% endif %} font-black text-[12px] whitespace-nowrap">{{ p.minutes_played }}'</span>
+                                <span class="font-bold truncate flex-1 text-[14px] text-slate-200 text-right"><span class="text-slate-500 font-medium text-[11px]">({{ p.position }})</span> {{ p.player_name }} <span class="text-slate-500 ml-1">{{ p.shirt_number or '-' }}</span></span>
+                                {% if p.sub_minute %}<span class="text-emerald-500 font-black text-[12px] whitespace-nowrap">{{ p.sub_minute}}'</span>{% endif %}
                             </div>
                         </div>
                         {% endfor %}

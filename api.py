@@ -8,74 +8,9 @@ import logging
 from datetime import datetime, timedelta
 
 class FotMob:
-    
     def __init__(self):
-        self.player_possible_stats = ['goals',
-            'goal_assist',
-            '_goals_and_goal_assist',
-            'rating',
-            'goals_per_90',
-            'expected_goals',
-            'expected_goals_per_90',
-            'expected_goalsontarget',
-            'ontarget_scoring_att',
-            'total_scoring_att',
-            'accurate_pass',
-            'big_chance_created',
-            'total_att_assist',
-            'accurate_long_balls',
-            'expected_assists',
-            'expected_assists_per_90',
-            '_expected_goals_and_expected_assists_per_90',
-            'won_contest',
-            'big_chance_missed',
-            'penalty_won',
-            'won_tackle',
-            'interception',
-            'effective_clearance',
-            'outfielder_block',
-            'penalty_conceded',
-            'poss_won_att_3rd',
-            'clean_sheet',
-            '_save_percentage',
-            'saves',
-            '_goals_prevented',
-            'goals_conceded',
-            'fouls',
-            'yellow_card',
-            'red_card'
-        ]
-
-        self.team_possible_stats = ['rating_team',
-            'goals_team_match',
-            'goals_conceded_team_match',
-            'possession_percentage_team',
-            'clean_sheet_team',
-            'expected_goals_team',
-            'ontarget_scoring_att_team',
-            'big_chance_team',
-            'big_chance_missed_team',
-            'accurate_pass_team',
-            'accurate_long_balls_team',
-            'accurate_cross_team',
-            'penalty_won_team',
-            'touches_in_opp_box_team',
-            'corner_taken_team',
-            'expected_goals_conceded_team',
-            'interception_team',
-            'won_tackle_team',
-            'effective_clearance_team',
-            'poss_won_att_3rd_team',
-            'penalty_conceded_team',
-            'saves_team',
-            'fk_foul_lost_team',
-            'total_yel_card_team',
-            'total_red_card_team'
-        ]
         self.scraper = cloudscraper.create_scraper()
         self.base_url = "https://www.fotmob.com"
-
-
 
 
 
@@ -199,9 +134,27 @@ def load_match_directly(match_id, connection):
         # 2. Tabla: player_match_details
         lineup = content.get("lineup", {})
         player_stats_map = content.get("playerStats", {})
+        events = response.get("content", {}).get("matchFacts", {}).get("events", {}).get("events", [])
+        subs = []
+        goals = []
+        cards = []
+        for ev in events:
+            if ev.get("type",None) == "Substitution":
+                swap = ev.get("swap", [])
+                subs.append({
+                    "p_in": str(swap[0].get("id")),
+                    "p_out": str(swap[1].get("id")),
+                    "minute": str(ev.get("timeStr", 0))
+                    }) 
+                
+            if ev.get("type",None) == "Goal":
+                goals.append({"id": ev.get("shotmapEvent", {}).get("id"), "assistPlayerId": ev.get("assistPlayerId", None)})
+
+            if  ev.get("type",None) == "Card":
+                cards.append(ev)        
+
         pos_map = {0: "ARQ", 1: "DF", 2: "M", 3: "DL"}
         player_rows = []
-
         for side in ["homeTeam", "awayTeam"]:
             team_data = lineup.get(side, {})
             team_id = str(team_data.get("id"))
@@ -216,15 +169,42 @@ def load_match_directly(match_id, connection):
                     for group in p_stat_info.get("stats", []):
                         for _, item in group.get("stats", {}).items():
                             if item.get("key"): all_stats[item["key"]] = item.get("stat", {}).get("value", 0)
+                    
+                    p_minutes = int(all_stats.get("minutes_played", 90 if section == "starters" else 0))
+                    
+                    # Si es titular pero no hay stats, asumimos 90 si el partido terminó (logica de descarga.py)
+                    if section == "starters" and p_minutes == 0 and status.get("finished"):
+                        p_minutes = 90
+
+                    is_starter = (section == "starters")
+                    
+                    # Logic for substitutions
+                    sub_id = None
+                    sub_minute = None
+                    if not is_starter:
+                        for sub in subs:
+                            if sub["p_in"] == pid:
+                                sub_id = sub["p_out"]
+                                sub_minute = sub["minute"]
+                                break
 
                     player_rows.append({
-                        "match_id": str(match_id), "player_id": pid, "team_id": team_id,
-                        "player_name": p.get("name"), "position": pos_map.get(p.get("usualPlayingPositionId"), "N/A"),
-                        "shirt_number": p.get("shirtNumber"), "rating": p.get("performance", {}).get("rating", 0),
-                        "role_x": p.get("verticalLayout", {}).get("y"), "role_y": p.get("verticalLayout", {}).get("x"),
-                        "is_starter": (section == "starters"), 
-                        "minutes_played": int(all_stats.get("minutes_played", 90 if section == "starters" else 0)),
-                        "fouls_committed": int(all_stats.get("fouls", 0)), "fouls_received": int(all_stats.get("was_fouled", 0))
+                        "match_id": str(match_id),
+                        "player_id": pid,
+                        "team_id": team_id,
+                        "first_name": p.get("firstName"),
+                        "last_name": p.get("lastName"),
+                        "position": pos_map.get(p.get("usualPlayingPositionId"), "N/A"),
+                        "shirt_number": p.get("shirtNumber"),
+                        "rating": p.get("performance", {}).get("rating", 0.0),
+                        "role_x": p.get("verticalLayout", {}).get("y", 0.0),
+                        "role_y": p.get("verticalLayout", {}).get("x", 0.0),
+                        "is_starter": is_starter, 
+                        "minutes_played": int(p_minutes),
+                        "substitution": sub_id,
+                        "sub_minute": sub_minute,
+                        "fouls_committed": int(all_stats.get("fouls", 0)),
+                        "fouls_received": int(all_stats.get("was_fouled", 0))
                     })
         if player_rows: 
             pd.DataFrame(player_rows).to_sql("player_match_details", connection, if_exists="append", index=False)
@@ -233,40 +213,61 @@ def load_match_directly(match_id, connection):
 
         # 3. Tabla: shots
         shots_data = content.get("shotmap", {}).get("shots", [])
-        shot_rows = [{
-            "match_id": str(match_id), "player_id": str(s.get("playerId")), "player_name": s.get("playerName"),
-            "team_id": str(s.get("teamId")), "minute": str(s.get("min")),
-            "on_target": s.get("isOnTarget") and not s.get("isBlocked"),
-            "shot_type": s.get("shotType"), "situation": s.get("situation"),
-            "outcome": s.get("eventType"), "inside_box": s.get("isFromInsideBox")
-        } for s in shots_data]
+        
+
+        shot_rows = []
+        for s in shots_data:
+            if s.get("period", None) == "PenaltyShootout":
+                continue
+
+            m_base = s.get("min")
+            m_added = s.get("minAdded")
+            assist_id = None
+
+            if s.get("eventType","") == "Goal":
+                g_id = s.get("id")
+                for goal in goals:
+                    if goal.get("id","") == g_id:
+                        assist_id = goal.get("assistPlayerId", None)
+
+            shot_rows.append({
+                "match_id": str(match_id),
+                "player_id": str(s.get("playerId")),
+                "first_name": s.get("firstName"),
+                "last_name": s.get("lastName"),
+                "team_id": str(s.get("teamId")),
+                "minute": str(m_base) if m_added is None else f"{m_base} + {m_added}",
+                "on_target": s.get("isOnTarget") and not s.get("isBlocked"),
+                "shot_type": s.get("shotType"),
+                "situation": s.get("situation"),
+                "outcome": s.get("eventType"),
+                "own_goal": s.get("isOwnGoal", False),
+                "assist_id": str(assist_id) if assist_id else None,
+                "inside_box": s.get("isFromInsideBox")
+            })
         if shot_rows:
             pd.DataFrame(shot_rows).to_sql("shots", connection, if_exists="append", index=False)
             logging.info(f"\tDetalles de {len(shot_rows)} tiros cargados.")
 
         # 4. Tabla: cards
-        events = content.get("matchFacts", {}).get("events", {}).get("events", [])
         general_info = response.get("general", {})
         h_id_card = str(general_info.get("homeTeam", {}).get("id"))
         a_id_card = str(general_info.get("awayTeam", {}).get("id"))
 
         card_rows = []
-        for ev in events:     
-            c_type = ev.get("card", None)
-            if c_type:
+        for card in events:     
 
-                desc = ev.get("cardDescription", {})
+                desc = card.get("cardDescription", None)
                 if desc and desc.get("localizedKey") == "not_on_pitch":
                     continue
 
-                p_obj = ev.get("player", {})
                 card_rows.append({
                     "match_id": str(match_id),
-                    "player_id": str(p_obj.get("id")),
-                    "player_name": p_obj.get("name"),
-                    "team_id": h_id_card if ev.get("isHome") else a_id_card,
-                    "card_type": c_type,
-                    "minute": str(ev.get("timeStr"))
+                    "player_id": str(card.get("id")),
+                    "first_name": card.get("firstName"), "last_name": card.get("lastName"),
+                    "team_id": h_id_card if card.get("isHome") else a_id_card,
+                    "card_type":  card.get("card", None),
+                    "minute": str(card.get("timeStr"))
                 })
         if card_rows: 
             pd.DataFrame(card_rows).to_sql("cards", connection, if_exists="append", index=False)

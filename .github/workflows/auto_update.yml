@@ -4,9 +4,6 @@ on:
     # 15:00 UTC es 12:00 PM Argentina (UTC-3)
     - cron: '0 15 * * *'
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:

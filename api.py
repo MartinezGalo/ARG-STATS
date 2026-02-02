@@ -255,7 +255,7 @@ def load_match_directly(match_id, connection):
         a_id_card = str(general_info.get("awayTeam", {}).get("id"))
 
         card_rows = []
-        for card in events:     
+        for card in cards:     
 
                 desc = card.get("cardDescription", None)
                 if desc and desc.get("localizedKey") == "not_on_pitch":
@@ -263,8 +263,9 @@ def load_match_directly(match_id, connection):
 
                 card_rows.append({
                     "match_id": str(match_id),
-                    "player_id": str(card.get("id")),
-                    "first_name": card.get("firstName"), "last_name": card.get("lastName"),
+                    "player_id": str(card.get("playerId")),
+                    "first_name": card.get("firstName"),
+                    "last_name": card.get("lastName"),
                     "team_id": h_id_card if card.get("isHome") else a_id_card,
                     "card_type":  card.get("card", None),
                     "minute": str(card.get("timeStr"))

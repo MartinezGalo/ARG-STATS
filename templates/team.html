@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+<style>
+    .custom-scroll::-webkit-scrollbar { width: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; border: 1px solid #1e293b; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #0ea5e9; }
+    .custom-scroll { scrollbar-width: thin; scrollbar-color: #334155 #1e293b; }
+    .player-card { 
+        background: rgba(15, 23, 42, 0.6); 
+        padding: 0.75rem 1rem; /* Un poco mas de aire que en la pizarra */
+        border-radius: 1rem; 
+        border: 1px solid #1e293b; 
+        transition: all 0.2s; 
+        cursor: pointer; 
+        }
+    .player-card:hover { 
+        border-color: #38bdf8; 
+        background: rgba(56, 189, 248, 0.05); 
+    }
+    #player-ranking-list {  min-height: 500px; display: flex; flex-direction: column; }
+    
+</style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="author" content="MartinezGalo & francoqdev">
+    <meta name="copyright" content="ARG STATS">
+    <title>{{ team_name }} - ARG STATS</title><script src="https://cdn.tailwindcss.com"></script><style>body{background-color:#0f172a;color:#f8fafc;}</style>
+    <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
+</head>
+<body class="p-8 font-sans">
+        <script>
+        function showMatches(type) {
+            const finished = document.getElementById('matches-finished');
+            const upcoming = document.getElementById('matches-upcoming');
+            const btnFinished = document.getElementById('btn-finished');
+            const btnUpcoming = document.getElementById('btn-upcoming');
+
+            if (type === 'finished') {
+                finished.classList.remove('hidden');
+                upcoming.classList.add('hidden');
+                btnFinished.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                btnFinished.classList.remove('text-slate-500');
+                btnUpcoming.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+                btnUpcoming.classList.add('text-slate-500');
+            } else {
+                finished.classList.add('hidden');
+                upcoming.classList.remove('hidden');
+                btnUpcoming.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                btnUpcoming.classList.remove('text-slate-500');
+                btnFinished.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+                btnFinished.classList.add('text-slate-500');
+            }
+        }
+
+        let currentType = 'tiradores';
+        let isL5 = false;
+        let teamPlayerData = []; 
+        let playerPage = 1;
+        const playersPerPage = 10; // Cuantos mostrar por pagina
+        const teamId = "{{ team_id }}";
+
+        // 1. Alternar ultimos 5 partidos
+        function toggleL5() {
+            isL5 = !isL5;
+            const btn = document.getElementById('l5-btn');
+            if (isL5) {
+                btn.classList.remove('text-slate-500', 'border-slate-700');
+                btn.classList.add('bg-sky-500', 'text-white', 'border-transparent');
+            } else {
+                btn.classList.add('text-slate-500', 'border-slate-700');
+                btn.classList.remove('bg-sky-500', 'text-white', 'border-transparent');
+            }
+            updateTeamRanking(teamId, currentType); // Recargar
+        }
+
+        // 2. Funcion unica para dibujar la lista
+        function renderPlayerPage() {
+            const list = document.getElementById('player-ranking-list');
+            const info = document.getElementById('player-page-info');
+            
+            const start = (playerPage - 1) * playersPerPage;
+            const visibleData = teamPlayerData.slice(start, start + playersPerPage);
+            const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
+
+            info.innerText = `${playerPage} / ${totalPages}`;
+            
+            list.innerHTML = visibleData.map(r => `
+                <div class="player-card ${r.is_transferred ? 'border-red-500/50' : ''}" data-pid="${r.player_id}">
+                    <div class="flex justify-between items-center gap-2">
+                        <span class="font-bold truncate text-[14px] ${r.is_transferred ? 'text-red-400' : 'text-slate-200'}">
+                            <span class="text-sky-500 mr-1">#${r.number || '-'} </span>${r.name}<span class="text-slate-500 text-[11px] italic"> (${r.pos})</span>
+                        </span>
+                        <span class="text-[12px] font-bold italic whitespace-nowrap ${r.is_transferred ? 'text-red-400' : 'text-slate-400'} text-right">
+                            <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[14px]">${r.val}</span> ${r.unit} en <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[13px]">${r.pj}</span> PJ | <span class="text-emerald-400">${r.avg}</span> / 90
+                        </span>
+                    </div>
+                </div>`).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-10">Sin datos.</p>';
+        }
+
+        // 3. Cambiar de pagina
+        function changePage(delta) {
+            const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
+            let next = playerPage + delta;
+            if (next >= 1 && next <= totalPages) {
+                playerPage = next;
+                renderPlayerPage();
+            }
+        }
+
+        // 4. Cargar datos desde la API
+        function updateTeamRanking(tId, rankType, shotFilter = 'all', e = null) {
+            currentType = rankType;
+            
+            // Manejo de UI de botones
+            if (e && e.currentTarget) {
+                const isSubBtn = e.currentTarget.classList.contains('sub-btn');
+                const buttons = document.querySelectorAll(isSubBtn ? `#sub-filters button` : `.rank-btn`);
+                buttons.forEach(b => { 
+                    b.classList.remove('bg-sky-500', 'text-white'); 
+                    b.classList.add('bg-slate-800', 'text-slate-500'); // text-slate-400 was used in HTML but JS sets 500
+                });
+                e.currentTarget.classList.remove('bg-slate-800', 'text-slate-500', 'text-slate-400');
+                e.currentTarget.classList.add('bg-sky-500', 'text-white');
+            }
+
+            const subMenu = document.getElementById(`sub-filters`);
+            if (rankType === 'tiradores') { 
+                subMenu.style.display = 'flex';
+                const subBtns = subMenu.querySelectorAll('button');
+                subBtns.forEach(b => {
+                    const type = b.id.split('-').pop(); // all, target, long
+                    if (type === shotFilter) {
+                        b.classList.remove('bg-slate-800', 'text-slate-500');
+                        b.classList.add('bg-sky-500', 'text-white');
+                    } else {
+                        b.classList.add('bg-slate-800', 'text-slate-500');
+                        b.classList.remove('bg-sky-500', 'text-white');
+                    }
+                });
+            } else { 
+                subMenu.style.display = 'none'; 
+            }
+
+            
+            const limit = isL5 ? 5 : '';
+            fetch(`/api/team_ranking/${tId}?type=${rankType}&filter=${shotFilter}&limit=${limit}`)
+                .then(r => r.json())
+                .then(data => { 
+                    teamPlayerData = data; 
+                    playerPage = 1; 
+                    renderPlayerPage(); 
+                });
+        }
+
+        window.onload = () => { updateTeamRanking(teamId, 'tiradores'); };
+    </script>
+    <div class="max-w-[80dvw] mx-auto space-y-12">
+        <!-- HEADER -->
+        <header class="flex justify-between items-center">
+            <div>
+                <a href="/" class="text-sky-500 font-black uppercase text-xs tracking-widest hover:underline">← Volver a Partidos</a>
+                <div class="flex items-center gap-6 mt-2">
+                    <img src="{{ url_for('static', filename=team_id ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-24 h-24 object-contain drop-shadow-2xl">
+                    <h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">{{ get_short_name(team_name) }}</h1>
+                </div>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-3xl border border-slate-700 text-center min-w-[200px]">
+                <span class="text-[10px] font-black text-slate-500 uppercase block mb-1">ID de Equipo</span>
+                <span class="text-2xl font-mono font-black text-sky-400">{{ team_id }}</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+
+            <!-- ULTIMOS PARTIDOS -->
+            <div class="space-y-6">
+                <div class="flex justify-between items-center border-l-4 border-slate-500 pl-4">
+                    <h2 class="text-xl font-black uppercase italic tracking-tighter">Partidos</h2>
+                    <div class="flex bg-slate-800 p-1 rounded-full border border-slate-700 text-[9px]">
+                        <button onclick="showMatches('finished')" id="btn-finished" class="px-3 py-1 rounded-full font-black uppercase transition-all bg-sky-500 text-white shadow-lg">Pasados</button>
+                        <button onclick="showMatches('upcoming')" id="btn-upcoming" class="px-3 py-1 rounded-full font-black uppercase transition-all text-slate-500 hover:text-white">Proximos</button>
+                    </div>
+                </div>
+                
+                <!-- LISTA PARTIDOS FINALIZADOS -->
+                <div id="matches-finished" class="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scroll">
+                    {% for m in matches_finished %}
+                    <a href="/match/{{ m.id }}" class="block bg-slate-900/50 p-4 rounded-2xl border border-slate-800 hover:border-sky-500 transition-all">
+                        <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase mb-2">
+                            <span>{{ m.date[:10] }}</span>
+                            <span>{{ m.tournament }} Fecha {{ m.gameweek }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[14px]">
+                            <div class="flex items-center gap-2 w-[140px]">
+                                <img src="{{ url_for('static', filename=m.id_home_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
+                                <span class="font-bold whitespace-nowrap overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_home_team|string == team_id|string else 'text-slate-400' }}">{{ get_short_name(m.home_team) }}</span>
+                            </div>
+                            <span class="bg-slate-800 px-3 py-1 rounded-lg font-mono font-black">{{ m.score or 'VS' }}</span>
+                            <div class="flex items-center gap-2 w-[140px] justify-end">
+                                <span class="text-right font-bold whitespace-nowrap overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_away_team|string == team_id|string else 'text-slate-400' }}">{{ get_short_name(m.away_team) }}</span>
+                                <img src="{{ url_for('static', filename=m.id_away_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
+                            </div>
+                        </div>
+                    </a>
+                    {% else %}
+                    <p class="text-center text-xs text-slate-500 italic py-4">No hay partidos finalizados.</p>
+                    {% endfor %}
+                </div>
+
+                <!-- LISTA PARTIDOS PROXIMOS -->
+                <div id="matches-upcoming" class="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scroll hidden">
+                    {% for m in matches_upcoming %}
+                    <a href="/match/{{ m.id }}" class="block bg-slate-900/50 p-4 rounded-2xl border border-slate-800 hover:border-sky-500 transition-all">
+                        <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase mb-2">
+                            <span>{{ m.date[:10] }}</span>
+                            <span>{{ m.tournament }} Fecha {{ m.gameweek }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[14px]">
+                            <div class="flex items-center gap-2 w-[140px]">
+                                <img src="{{ url_for('static', filename=m.id_home_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
+                                <span class="font-bold whitespace-nowrap overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_home_team|string == team_id|string else 'text-slate-400' }}">{{ get_short_name(m.home_team) }}</span>
+                            </div>
+                            <span class="bg-slate-800 px-3 py-1 rounded-lg font-mono font-black text-emerald-400 animate-pulse">VS</span>
+                            <div class="flex items-center gap-2 w-[140px] justify-end">
+                                <span class="text-right font-bold whitespace-nowrap overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_away_team|string == team_id|string else 'text-slate-400' }}">{{ get_short_name(m.away_team) }}</span>
+                                <img src="{{ url_for('static', filename=m.id_away_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
+                            </div>
+                        </div>
+                    </a>
+                    {% else %}
+                    <p class="text-center text-xs text-slate-500 italic py-4">No hay partidos proximos programados.</p>
+                    {% endfor %}
+                </div>
+            </div>
+            <!-- POSICIONES GLOBALES -->
+            <div class="space-y-6">
+                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-sky-500 pl-4">Posiciones en Estadisticas</h2>
+                {# Macro para definir el color de la posicion basado en tu funcion #}
+                {% macro get_pos_color(v) -%}
+                    {% if v == 'N/A' %}text-slate-500
+                    {% elif v|int > 20 %}text-red-500
+                    {% elif v|int > 10 %}text-blue-500
+                    {% else %}text-green-500
+                    {% endif %}
+                {%- endmacro %}
+                <div class="bg-slate-800/20 rounded-[2rem] m-auto border border-slate-700/50 overflow-hidden">
+                    {% for pair in global_ranks %}
+                    <div class="grid grid-cols-2 border-b border-slate-700/30 last:border-0 hover:bg-slate-700/10 transition-colors">
+                        <div class="p-4 flex justify-between items-center border-r border-slate-700/30">
+                            <div class="flex flex-col">
+                                <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">{{ pair.made.label }}</span>
+                                <div class="flex items-baseline gap-2">
+                                    <span class="text-[16px] font-black {{ get_pos_color(pair.made.pos) }}">#{{ pair.made.pos }}</span>
+                                    <span class="text-[11px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.made.total }}</b></span>
+                                    <span class="text-[11px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.made.pj }}</b></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-4 flex justify-between items-center bg-red-500/5">
+                            <div class="flex flex-col">
+                                <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">{{ pair.against.label }}</span>
+                                <div class="flex items-baseline gap-2">
+                                    <span class="text-[16px] font-black {{ get_pos_color(pair.against.pos) }}">#{{ pair.against.pos }}</span>
+                                    <span class="text-[11px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.against.total }}</b></span>
+                                    <span class="text-[11px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.against.pj }}</b></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- ESTADISTICAS PLANTEL -->
+            <div class="space-y-3">
+                <div class="flex justify-between items-center border-l-4 border-orange-500 pl-4">
+                    <h2 class="text-xl font-black uppercase italic tracking-tighter">Estadisticas Plantel</h2>
+                    <button onclick="toggleL5()" id="l5-btn" class="text-[9px] px-3 py-1 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
+                </div>
+                <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
+                    <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px]">
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold rank-btn" id="btn-main">Tiros</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'goals', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Goles</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'headers', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Cabezazos</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'yellows', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Tarjetas</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls_rec', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas Rec.</button>
+                    </div>
+                    <div id="sub-filters" class="sub-menu flex gap-1 justify-center mt-2 text-[11px]" style="display:none;">
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" id="sub-all" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-black sub-btn">Todos</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'target', event)" id="sub-target" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black sub-btn">Arco</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'long', event)" id="sub-long" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black sub-btn">Lejos</button>
+                    </div>
+                </div>
+
+                <div id="player-ranking-list" class="space-y-1"></div> 
+                <div class="flex justify-center gap-4 mt-2">
+                    <button onclick="changePage(-1)" class="text-sky-400 hover:text-white">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+
+                    <span id="player-page-info" class="text-[10px] font-black text-slate-500 uppercase mt-0.5">1 / 1</span> 
+                    
+                    <button onclick="changePage(1)" class="text-sky-400 hover:text-white">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% include 'footer.html' %}</body></html>

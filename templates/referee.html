@@ -1,0 +1,149 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="author" content="MartinezGalo & francoqdev">
+    <meta name="copyright" content="ARG STATS">
+
+    <title>arbitro: {{ ref_name }} - ARG STATS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body{background-color:#0f172a;color:#f8fafc;}
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #0ea5e9; }
+    </style>
+</head>
+<body class="p-8 font-sans">
+    <div class="max-w-[80dvw] mx-auto space-y-12">
+        <!-- HEADER -->
+        <header class="flex justify-between items-center">
+            <div>
+                <a href="/" class="text-sky-500 font-black uppercase text-xs tracking-widest hover:underline">← Volver a Partidos</a>
+                <h1 class="text-6xl font-black italic uppercase tracking-tighter text-white mt-2">{{ ref_name }}</h1>
+            </div>
+            <div class="flex gap-4">
+                <div class="bg-slate-800 p-4 rounded-3xl border border-slate-700 text-center min-w-[150px]">
+                    <span class="text-[10px] font-black text-slate-500 uppercase block mb-1">Rank Tarjetas</span>
+                    <span class="text-2xl font-mono font-black text-yellow-500">#{{ ranks.cards }}</span>
+                </div>
+                <div class="bg-slate-800 p-4 rounded-3xl border border-slate-700 text-center min-w-[150px]">
+                    <span class="text-[10px] font-black text-slate-500 uppercase block mb-1">Rank Faltas</span>
+                    <span class="text-2xl font-mono font-black text-sky-400">#{{ ranks.fouls }}</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            <!-- LISTA PARTIDOS -->
+            <div class="space-y-6">
+                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-slate-500 pl-4">Partidos Dirigidos</h2>
+                <div class="space-y-4 max-h-[700px] overflow-y-auto pr-2 custom-scroll">
+                    {% for m in matches %}
+                    <div class="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 text-[15px]">
+                        <a href="/match/{{ m.id }}">
+                            <div class="flex justify-between text-[11px] font-black text-slate-500 uppercase mb-3">
+                                <span>{{ m.date[:10] }}</span>
+                                <span>{{ m.tournament }}</span>
+                            </div>
+                            <div class="grid grid-cols-3 items-center gap-2 mb-3 text-[14px]">
+                                <div class="flex flex-col items-center gap-1 overflow-hidden">
+                                    <img src="{{ url_for('static', filename=m.id_home_team ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-8 h-8 object-contain">
+                                    <span class="font-bold text-center truncate w-full">{{ get_short_name(m.home_team) }}</span>
+                                </div>
+                                <span class="bg-slate-800 py-1 rounded-lg font-mono font-black text-center">{{ m.score or 'VS' }}</span>
+                                <div class="flex flex-col items-center gap-1 overflow-hidden">
+                                    <img src="{{ url_for('static', filename=m.id_away_team ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-8 h-8 object-contain">
+                                    <span class="font-bold text-center truncate w-full">{{ get_short_name(m.away_team) }}</span>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                                <div class="text-center">
+                                    <p class="text-[11px] font-black text-slate-500 uppercase">Local</p>
+                                    <p class="text-[12px] font-bold"><span class="text-yellow-500">{{ m.stats.h_cards }} Tarj.</span> | <span class="text-sky-400">{{ m.stats.h_fouls }} Faltas</span></p>
+                                </div>
+                                <div class="text-center">
+                                    <p class="text-[11px] font-black text-slate-500 uppercase">Visita</p>
+                                    <p class="text-[12px] font-bold"><span class="text-yellow-500">{{ m.stats.v_cards }} Tarj.</span> | <span class="text-sky-400">{{ m.stats.v_fouls }} Faltas</span></p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- ANALISIS TENDENCIAS -->
+            <div class="lg:col-span-2 space-y-8">
+                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-red-500 pl-4">Analisis de Tendencias por Equipo</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- TARJETAS POR EQUIPO -->
+                    <div class="bg-slate-800/30 p-6 rounded-[2rem] border border-slate-700/50">
+                        <h3 class="text-sm font-black text-yellow-500 uppercase mb-4 tracking-widest">Equipos con mas Tarjetas</h3>
+                        <div class="space-y-2">
+                            {% for t in top_targets.cards %}
+                            <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800">
+                                <div class="flex items-center gap-2 overflow-hidden">
+                                    <img src="{{ url_for('static', filename=t.id ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
+                                    <a href="/team/{{ t.id }}" class="font-bold text-sm truncate hover:text-yellow-500">{{ get_short_name(t.name) }}</a>
+                                </div>
+                                <span class="text-xs font-black"><span class="text-yellow-500 text-lg">{{ t.total }}</span> T en {{ t.pj }} PJ</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- FALTAS COMETIDAS -->
+                    <div class="bg-slate-800/30 p-6 rounded-[2rem] border border-slate-700/50">
+                        <h3 class="text-sm font-black text-red-500 uppercase mb-4 tracking-widest">Mas Faltas Cometidas (En contra)</h3>
+                        <div class="space-y-2">
+                            {% for t in top_targets.fouls_committed %}
+                            <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800">
+                                <div class="flex items-center gap-2 overflow-hidden">
+                                    <img src="{{ url_for('static', filename=t.id ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
+                                    <a href="/team/{{ t.id }}" class="font-bold text-sm truncate hover:text-red-500">{{ get_short_name(t.name) }}</a>
+                                </div>
+                                <span class="text-xs font-black"><span class="text-red-500 text-lg">{{ t.total }}</span> F en {{ t.pj }} PJ</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- FALTAS RECIBIDAS -->
+                    <div class="bg-slate-800/30 p-6 rounded-[2rem] border border-slate-700/50">
+                        <h3 class="text-sm font-black text-emerald-500 uppercase mb-4 tracking-widest">Mas Faltas Recibidas (A favor)</h3>
+                        <div class="space-y-2">
+                            {% for t in top_targets.fouls_received %}
+                            <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800">
+                                <div class="flex items-center gap-2 overflow-hidden">
+                                    <img src="{{ url_for('static', filename=t.id ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
+                                    <a href="/team/{{ t.id }}" class="font-bold text-sm truncate hover:text-emerald-500">{{ get_short_name(t.name) }}</a>
+                                </div>
+                                <span class="text-xs font-black"><span class="text-emerald-500 text-lg">{{ t.total }}</span> F en {{ t.pj }} PJ</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- PROMEDIOS -->
+                    <div class="bg-sky-500/5 p-6 rounded-[2rem] border border-sky-500/20 flex flex-col justify-center text-center">
+                        <p class="text-sky-400 font-black uppercase text-[10px] tracking-[0.3em] mb-2">Promedio General</p>
+                        <div class="flex justify-around">
+                            <div>
+                                <p class="text-3xl font-black text-white">{{ stats_avg.cards }}</p>
+                                <p class="text-[9px] text-slate-500 font-bold uppercase">Tarjetas / Part</p>
+                            </div>
+                            <div>
+                                <p class="text-3xl font-black text-white">{{ stats_avg.fouls }}</p>
+                                <p class="text-[9px] text-slate-500 font-bold uppercase">Faltas / Part</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% include 'footer.html' %}</body></html>

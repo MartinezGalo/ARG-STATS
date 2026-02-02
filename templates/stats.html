@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8"><title>ARG STATS</title>
+    <meta name="author" content="MartinezGalo & francoqdev">
+    <meta name="copyright" content="ARG STATS">
+    <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #0ea5e9; }
+        .btn-active { background-color: #0ea5e9; color: white; border-color: transparent; box-shadow: 0 10px 15px -3px rgba(14, 165, 233, 0.3); }
+        .btn-inactive { background-color: #1e293b; color: #94a3b8; border-color: #334155; }
+        .btn-inactive:hover { color: white; border-color: #475569; }
+    </style>
+</head>
+<body class="p-8 pb-0 font-sans">
+    <div class="max-w-[1500px] mx-auto">
+        <!-- HEADER -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-4 gap-6">
+            <a href="/"><h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1></a>
+            <nav>
+                <a href="/" class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">← Volver</a>
+            </nav>
+        </header>
+
+        <!-- CONTROLES -->
+        <div class="flex flex-col items-center gap-4 mt-2 mb-4 bg-slate-900/80 p-4 rounded-b-[2rem] border-t border-slate-200 backdrop-blur-xl shadow-2xl">
+            
+            <!-- 1. MODO (Equipos | Jugadores | Arbitros) -->
+            <div class="flex bg-slate-800 p-1.5 rounded-2xl border border-slate-700 shadow-lg">
+                <button onclick="setMode('teams')" id="btn-mode-teams" class="px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all">Equipos</button>
+                <button onclick="setMode('players')" id="btn-mode-players" class="px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all">Jugadores</button>
+                <button onclick="setMode('referees')" id="btn-mode-referees" class="px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all">Arbitros</button>
+            </div>
+
+            <!-- 2. CATEGORIA -->
+            <div class="flex flex-wrap justify-center gap-2">
+                <button onclick="setCategory('shots')" id="btn-cat-shots" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Tiros</button>
+                <button onclick="setCategory('goals')" id="btn-cat-goals" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Goles</button>
+                <button onclick="setCategory('headers')" id="btn-cat-headers" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Cabezazos</button>
+                <button onclick="setCategory('cards')" id="btn-cat-cards" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Tarjetas</button>
+                <button onclick="setCategory('fouls')" id="btn-cat-fouls" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Faltas</button>
+                <button onclick="setCategory('fouls_received')" id="btn-cat-fouls_received" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Faltas Rec.</button>
+            </div>
+
+            <!-- 3. SUB-FILTRO (Solo Tiros) -->
+            <div id="subfilter-container" class="hidden flex gap-2 animate-fade-in-down">
+                <button onclick="setSubFilter('all')" id="btn-sub-all" class="sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all">Todos</button>
+                <button onclick="setSubFilter('target')" id="btn-sub-target" class="sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all">Al Arco</button>
+                <button onclick="setSubFilter('long')" id="btn-sub-long" class="sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all">Lejos</button>
+            </div>
+        </div>
+
+        <!-- RESULTADOS -->
+        <div id="grid-container" class="grid gap-2">
+            <!-- El contenido se inyecta via JS -->
+        </div>
+    </div>
+
+    <script>
+    const TEAM_MAP = {{ team_map|safe }};
+    function getShortName(name) { return TEAM_MAP[name] || name; }
+
+    // Estado Global
+    const state = {
+        mode: 'teams', // teams, players, referees
+        category: 'shots', // shots, headers, cards, fouls
+        subFilter: 'all', // all, target, long
+    };
+
+    // Estado Individual por Grid
+    const gridState = {
+        made: { sort: 'total', l5: false },
+        against: { sort: 'total', l5: false },
+        single: { sort: 'total', l5: false }
+    };
+
+    const pages = { made: 1, against: 1, single: 1 };
+    const dataCache = { made: [], against: [], single: [] };
+    const perPage = 10;
+
+    // Diccionarios de etiquetas
+    const LABELS = {
+        teams: {
+            shots: { made: 'Tiros Realizados', against: 'Tiros Recibidos' },
+            goals: { made: 'Goles a Favor', against: 'Goles en Contra' },
+            headers: { made: 'Cabezazos Realizados', against: 'Cabezazos Recibidos' },
+            cards: { made: 'Tarjetas Recibidas', against: 'Tarjetas Generadas (Rival)' },
+            fouls: { made: 'Faltas Cometidas', against: 'Faltas Recibidas)' }
+        },
+        players: {
+            shots: 'Rematadores',
+            goals: 'Goleadores',
+            headers: 'Cabezazos',
+            cards: 'Tarjetas Recibidas',
+            fouls: 'Faltas Cometidas',
+            fouls_received: 'Faltas Recibidas'
+        },
+        referees: {
+            cards: 'Arbitros con mas Tarjetas',
+            fouls: 'Arbitros con mas Faltas'
+        }
+    };
+
+    function init() {
+        updateUI();
+        fetchData();
+    }
+
+    function resetGridState() {
+        ['made', 'against', 'single'].forEach(k => {
+            gridState[k] = { sort: 'total', l5: false };
+        });
+    }
+
+    function setMode(m) { 
+        state.mode = m; 
+        resetGridState(); 
+        
+        if (m === 'referees') {
+            state.category = 'cards';
+        } else {
+            state.category = 'shots';
+            state.subFilter = 'all';
+        }
+        
+        updateUI(); 
+        fetchData(); 
+    }
+    function setCategory(c) { state.category = c; resetGridState(); updateUI(); fetchData(); }
+    function setSubFilter(s) { state.subFilter = s; updateUI(); fetchData(); }
+    
+    function toggleSort(id) { 
+        gridState[id].sort = (gridState[id].sort === 'total' ? 'avg' : 'total'); 
+        fetchData(id); 
+    }
+    
+    function toggleL5(id) { 
+        gridState[id].l5 = !gridState[id].l5; 
+        fetchData(id); 
+    }
+
+    function updateUI() {
+        // Modo
+        ['teams', 'players', 'referees'].forEach(m => {
+            const btn = document.getElementById(`btn-mode-${m}`);
+            if (state.mode === m) {
+                btn.className = 'px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-active';
+            } else {
+                btn.className = 'px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-inactive';
+            }
+        });
+
+        // Categorias
+        const cats = ['shots','goals', 'headers', 'cards', 'fouls', 'fouls_received'];
+        cats.forEach(c => {
+            const btn = document.getElementById(`btn-cat-${c}`);
+            let show = true;
+            
+            // Logic for visibility
+            if (state.mode === 'referees' && (c === 'shots' || c === 'goals' || c === 'headers' || c === 'fouls_received')) show = false;
+            if (state.mode === 'teams' && c === 'fouls_received') show = false;
+
+            if (!show) {
+                btn.style.display = 'none';
+            } else {
+                btn.style.display = 'inline-block';
+                if (state.category === c) {
+                    btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-active';
+                } else {
+                    btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-inactive';
+                }
+            }
+        });
+        
+        if (state.mode === 'referees' && (state.category === 'shots' || state.category === 'headers' || state.category === 'fouls_received')) {
+            state.category = 'cards';
+            updateUI();
+            return;
+        }
+
+        const subDiv = document.getElementById('subfilter-container');
+        if (state.category === 'shots') {
+            subDiv.classList.remove('hidden');
+            ['all', 'target', 'long'].forEach(s => {
+                const btn = document.getElementById(`btn-sub-${s}`);
+                if (state.subFilter === s) {
+                    btn.className = 'sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all bg-sky-500 text-white border-transparent shadow-md';
+                } else {
+                    btn.className = 'sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all bg-slate-800 text-slate-400 border-slate-700 hover:text-white';
+                }
+            });
+        } else {
+            subDiv.classList.add('hidden');
+        }
+    }
+
+    let currentFetchId = 0;
+
+    async function fetchData(targetId = null) {
+        const fetchId = ++currentFetchId;
+        const grid = document.getElementById('grid-container');
+        
+        // Ensure correct grid structure
+        if (state.mode === 'teams') {
+            if (!document.getElementById('box-container-made')) renderDoubleGrid();
+        } else {
+            if (!document.getElementById('box-container-single')) renderSingleGrid();
+        }
+        
+        // Loading State (Targeted)
+        const targets = targetId ? [targetId] : (state.mode === 'teams' ? ['made', 'against'] : ['single']);
+        targets.forEach(id => {
+            const el = document.getElementById(`box-container-${id}`);
+            if(el) el.style.opacity = '0.5';
+        });
+
+        try {
+            if (state.mode === 'teams') {
+                const reqs = [];
+                // Si targetId es null, traemos todo. Si no, solo el que cambio.
+                if (!targetId || targetId === 'made') {
+                    const s = gridState.made;
+                    pages.made = 1;
+                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=made&limit=${s.l5?5:''}&order_by=${s.sort}`).then(r=>r.json()).then(d => { dataCache.made = d; }));
+                }
+                if (!targetId || targetId === 'against') {
+                    const s = gridState.against;
+                    pages.against = 1;
+                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=against&limit=${s.l5?5:''}&order_by=${s.sort}`).then(r=>r.json()).then(d => { dataCache.against = d; }));
+                }
+                
+                await Promise.all(reqs);
+                if (currentFetchId !== fetchId) return;
+
+                if (state.mode === 'teams') {
+                   // Re-render boxes
+                   if (!targetId || targetId === 'made') renderBox(document.getElementById('box-container-made'), 'made', LABELS.teams[state.category].made, true);
+                   if (!targetId || targetId === 'against') renderBox(document.getElementById('box-container-against'), 'against', LABELS.teams[state.category].against, true);
+                }
+
+            } else {
+                const s = gridState.single;
+                pages.single = 1;
+                let url = '';
+                if (state.mode === 'players') {
+                    // Limite a 100 (10 paginas de 10)
+                    url = `/api/player_stats?rank_type=${state.category}&filter=${state.subFilter}&order_by=${s.sort}&limit=50`;
+                    if (s.l5) url += '&limit_matches=5';
+                } else {
+                    url = `/api/referee_stats?category=${state.category}&order_by=${s.sort}`;
+                    if (s.l5) url += '&limit=5';
+                }
+                
+                const data = await fetch(url).then(r => r.json());
+                if (currentFetchId !== fetchId) return;
+                dataCache.single = data;
+                
+                if (state.mode !== 'teams') {
+                   renderBox(document.getElementById('box-container-single'), 'single', LABELS[state.mode][state.category], false);
+                }
+            }
+        } catch (e) {
+            if (currentFetchId !== fetchId) return;
+            console.error(e);
+            grid.innerHTML = '<div class="text-center text-red-500 py-20 font-bold col-span-2">Error al cargar datos.</div>';
+        } finally {
+            if (currentFetchId === fetchId) {
+                targets.forEach(id => {
+                    const el = document.getElementById(`box-container-${id}`);
+                    if(el) el.style.opacity = '1';
+                });
+            }
+        }
+    }
+
+    function renderDoubleGrid() {
+        const grid = document.getElementById('grid-container');
+        grid.className = 'grid grid-cols-1 lg:grid-cols-2 gap-8';
+        grid.innerHTML = '<div id="box-container-made"></div><div id="box-container-against"></div>';
+        // Los datos pueden no estar listos, renderBox maneja array vacio
+        renderBox(document.getElementById('box-container-made'), 'made', LABELS.teams[state.category].made, true);
+        renderBox(document.getElementById('box-container-against'), 'against', LABELS.teams[state.category].against, true);
+    }
+
+    function renderSingleGrid() {
+        const grid = document.getElementById('grid-container');
+        grid.className = 'grid grid-cols-1 gap-8 max-w-4xl mx-auto w-full';
+        grid.innerHTML = '<div id="box-container-single"></div>';
+        renderBox(document.getElementById('box-container-single'), 'single', LABELS[state.mode][state.category], false);
+    }
+
+    function changeLocalPage(id, delta) {
+        const total = Math.ceil(dataCache[id].length / perPage) || 1;
+        let next = pages[id] + delta;
+        if (next >= 1 && next <= total) {
+            pages[id] = next;
+            const container = document.getElementById(`box-container-${id}`);
+            renderBox(container, id, container.dataset.title, container.dataset.isteam === 'true');
+        }
+    }
+
+    function renderBox(container, id, title, isTeam) {
+        if (!container) return;
+        container.dataset.title = title;
+        container.dataset.isteam = isTeam;
+        const data = dataCache[id] || [];
+        const page = pages[id];
+        const start = (page - 1) * perPage;
+        const visible = data.slice(start, start + perPage);
+        const totalPages = Math.ceil(data.length / perPage) || 1;
+        const s = gridState[id];
+
+        container.innerHTML = `
+            <div class="bg-slate-800/40 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col overflow-hidden">
+                <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700/50 flex justify-between items-center">
+                    <h3 class="font-black text-sky-400 uppercase text-[15px] tracking-widest">${title}</h3>
+                    <div class="flex gap-2">
+                        <button onclick="toggleSort('${id}')" class="text-[11px] font-black uppercase px-3 py-1 rounded-full border ${s.sort==='avg'?'bg-sky-500 text-white border-transparent':'bg-slate-900 text-slate-500 border-slate-700'}">Promedio</button>
+                        <button onclick="toggleL5('${id}')" class="text-[11px] font-black uppercase px-3 py-1 rounded-full border ${s.l5?'bg-sky-500 text-white border-transparent':'bg-slate-900 text-slate-500 border-slate-700'}">Ultimos 5</button>
+                    </div>
+                </div>
+                <div class="py-2 flex-1 space-y-0">
+                    ${visible.map((item, i) => renderRow(item, start + i, isTeam)).join('') || '<div class="text-center text-slate-600 italic py-10">Sin datos</div>'}
+                </div>
+                <div class="p-4 bg-slate-900/30 border-t border-slate-700/30 flex justify-between items-center">
+                    <button onclick="changeLocalPage('${id}', -1)" class="p-2 rounded-lg bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" ${page === 1 ? 'disabled' : ''}>
+                        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+                    <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">${page} / ${totalPages}</span>
+                    <button onclick="changeLocalPage('${id}', 1)" class="p-2 rounded-lg bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" ${page === totalPages ? 'disabled' : ''}>
+                        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderRow(item, i, isTeam) {
+        let colorClass = 'text-slate-500';
+        const idx = i; // Posicion real (0-indexed)
+        const rank = idx + 1;
+
+        if (state.mode === 'teams' || isTeam) {
+            if (rank <= 10) colorClass = 'text-green-400';
+            else if (rank <= 20) colorClass = 'text-blue-400';
+            else if (rank <= 30) colorClass = 'text-red-400';
+        } else if (state.mode === 'players') {
+            if (rank <= 10) colorClass = 'text-green-400';
+            else colorClass = 'text-blue-400';
+        } else if (state.mode === 'referees') {
+            if (rank <= 5) colorClass = 'text-green-400';
+            else colorClass = 'text-blue-400';
+        }
+
+        let imgHtml = ''; let mainText = ''; let subText = ''; let link = '#';
+
+        if (state.mode === 'teams' || isTeam) {
+            imgHtml = `<img src="/static/${item.id}_xsmall.png" onerror="this.src='/static/none.png'" class="w-8 h-8 object-contain">`;
+            mainText = getShortName(item.name); link = `/team/${item.id}`;
+        } else if (state.mode === 'referees') {
+            mainText = item.name; link = `/referee/${item.name}`;
+        } else {
+            mainText = item.name;
+            subText = `<a href="/team/${item.t_id}" class="text-[12px] text-sky-500 font-bold uppercase hover:underline flex items-center gap-1 mt-0.5"><img src="/static/${item.t_id}_xsmall.png" class="w-3 h-3 object-contain"> ${getShortName(item.t_name)}</a>`;
+        }
+
+        return `
+            <div class="flex justify-between items-center bg-slate-900/40 p-2 rounded-xl border border-slate-800/50 hover:border-slate-700 transition-all group">
+                <div class="flex items-center gap-4 overflow-hidden">
+                    <span class="text-lg font-black ${colorClass} w-6 text-center">#${rank}</span>
+                    ${imgHtml}
+                    <div class="flex flex-col truncate">
+                        <a href="${link}" class="text-[15px] font-bold text-slate-200 group-hover:text-sky-400 transition-colors truncate">${mainText}</a>
+                        ${subText}
+                    </div>
+                </div>
+                
+
+                <span class="text-[13px] font-bold text-slate-500"><span class="text-[15px] font-black text-white">${item.total}</span> en
+                <span class="text-[15px] font-black text-white">${item.pj}</span> PJ | <span class="text-emerald-400">${item.avg}</span> / 90 </span>
+
+            </div>
+        `;
+    }
+
+    init();
+    </script>
+    {% include 'footer.html' %}</body></html>

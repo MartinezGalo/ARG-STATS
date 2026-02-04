@@ -1,26 +1,254 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8"><title>ARG STATS</title><script src="https://cdn.tailwindcss.com"></script><style>body{background-color:#0f172a;color:#f8fafc;}</style>
-    <meta name="author" content="MartinezGalo & francoqdev">
-    <meta name="copyright" content="ARG STATS">
-    <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
-</head>
-<body class="p-8 font-sans">
-        <script>
+{% extends 'base.html' %}
+
+{% block title %}ARG STATS{% endblock %}
+
+{% block body_class %}p-8 font-sans{% endblock %}
+
+{% block content %}
+    <div class="max-w-5xl mx-auto">
+        <!-- HEADER -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
+            <a href="/">
+                <h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1>
+            </a>
+            <nav class="flex gap-4">
+                <a href="/" class="bg-sky-600 px-6 py-2 rounded-xl text-xs font-black uppercase shadow-lg">Partidos</a>
+                <a href="/stats"
+                    class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">Estadisticas
+                    Liga</a>
+            </nav>
+        </header>
+
+        <!-- FILTROS -->
+        <div class="flex sticky top-0 z-10 justify-center mb-12">
+            <form id="filter-form"
+                class="flex flex-wrap items-stretch justify-center gap-0 bg-slate-800/40 rounded-[2rem] border border-slate-700/50 backdrop-blur-md shadow-2xl overflow-hidden">
+                <input type="hidden" name="sort_by" id="sort-input" value="{{ current_sort or '' }}">
+                
+                <div class="flex flex-col justify-center border-r border-slate-700/50 p-2 px-4 gap-1">
+                    <label class="text-[9px] font-black uppercase text-sky-400 tracking-[0.2em] text-center mb-1">Ordenar</label>
+                    <div class="flex gap-1">
+                        <button type="button" onclick="setSort('shots')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'shots' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Tiros</button>
+                        <button type="button" onclick="setSort('headers')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'headers' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Cabez.</button>
+                        <button type="button" onclick="setSort('fouls')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'fouls' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Faltas</button>
+                        <button type="button" onclick="setSort('cards')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'cards' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Tarj.</button>
+                    </div>
+                </div>
+
+                <div class="flex flex-col border-r border-slate-700/50 p-4 hover:bg-slate-700/20 transition-colors">
+                    <label
+                        class="text-[9px] font-black uppercase text-sky-400 mb-1 tracking-[0.2em] text-center">Temporada</label>
+                    <select name="year" id="year-select" onchange="this.form.submit()"
+                        class="bg-transparent text-white text-sm font-bold outline-none cursor-pointer">
+                        {% for y in years %}
+                        <option value="{{ y }}" {% if current_year==y %}selected{% endif %} class="bg-slate-900">{{ y }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="flex flex-col border-r border-slate-700/50 p-4 hover:bg-slate-700/20 transition-colors">
+                    <label
+                        class="text-[9px] font-black uppercase text-sky-400 mb-1 tracking-[0.2em] text-center">Torneo</label>
+                    <select name="tournament" id="tournament-select" onchange="this.form.submit()"
+                        class="bg-transparent text-white text-sm font-bold outline-none cursor-pointer">
+                        <option value="Liga Profesional Apertura" {% if current_tournament=='Liga Profesional Apertura'
+                            %}selected{% endif %} class="bg-slate-900">Apertura</option>
+                        <option value="Liga Profesional Clausura" {% if current_tournament=='Liga Profesional Clausura'
+                            %}selected{% endif %} class="bg-slate-900">Clausura</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-4 p-4 hover:bg-slate-700/20 transition-colors">
+                    <button type="button" onclick="stepGameweek(-1)"
+                        class="p-2 rounded-full hover:bg-sky-500/20 text-sky-400 transition-all active:scale-90">
+                        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3"
+                            viewBox="0 0 24 24">
+                            <path d="m15 18-6-6 6-6" />
+                        </svg>
+                    </button>
+
+                    <div class="flex flex-col items-center">
+                        <label
+                            class="text-[9px] font-black uppercase text-sky-400 mb-1 tracking-[0.2em]">Jornada</label>
+                        <select name="gameweek" id="gameweek-select" onchange="this.form.submit()"
+                            class="bg-transparent text-white text-sm font-bold outline-none cursor-pointer">
+                            {% for i in range(1, 21) %}
+                            <option value="{{ i }}" {% if current_gameweek|int==i %}selected{% endif %}
+                                class="bg-slate-900">Fecha {{ i }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <button type="button" onclick="stepGameweek(1)"
+                        class="p-2 rounded-full hover:bg-sky-500/20 text-sky-400 transition-all active:scale-90">
+                        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3"
+                            viewBox="0 0 24 24">
+                            <path d="m9 18 6-6-6-6" />
+                        </svg>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- GRILLA PARTIDOS -->
+        <div class="grid grid-cols-1 gap-8">
+            {% macro score_color(val) %}{% if val <= 30 %}text-red-500{% elif val <=70 %}text-blue-500{% else
+                %}text-green-500{% endif %}{% endmacro %} {% for m in matches %} <!-- TARJETA PARTIDO -->
+                <div
+                    class="bg-slate-800 p-8 rounded-[2.5rem] border border-slate-700 shadow-lg relative overflow-hidden transition-all hover:border-slate-600">
+
+                    <div
+                        class="flex flex-wrap justify-between items-center mb-8 border-b border-slate-700/50 pb-4 gap-4">
+                        <div class="flex items-center gap-4">
+                            <span
+                                class="bg-sky-500/10 text-sky-400 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-sky-500/20">{{
+                                m.tournament }}</span>
+                            <span class="text-[14px] font-black text-slate-300 tracking-tighter">{{ m.date[:16]
+                                }}</span>
+                            <div class="flex items-center gap-2">
+                                <span
+                                    class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">arbitro:</span>
+
+                                <div class="flex items-center gap-1.5">
+                                    {% if m.referee %}
+                                    <a href="/referee/{{ m.referee }}"
+                                        class="text-sm font-bold text-slate-200 italic hover:text-sky-400 transition-colors">
+                                        {{ m.referee }}
+                                    </a>
+                                    {% else %}
+                                    <span class="text-sm font-medium text-slate-500 italic tracking-tight">
+                                        Por designar
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <span
+                            class="text-[10px] font-black uppercase tracking-widest {% if m.finished %}text-slate-500{% else %}text-emerald-400 animate-pulse{% endif %}">
+                            {% if m.finished %}FINALIZADO{% else %}PENDIENTE{% endif %}
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-3 grid-rows-[fit-content] items-center text-center justify-between gap-2 px-6 mt-auto">
+                        <!-- EQUIPO LOCAL -->
+                        <div class="flex-1 flex flex-col">
+                            <a href="/team/{{ m.id_home_team }}"
+                                class="text-3xl font-black uppercase tracking-tighter hover:text-sky-400 transition-colors mb-6 block flex flex-col items-center gap-4">
+                                <img src="{{ url_for('static', filename=m.id_home_team ~ '.png') }}"
+                                    onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'"
+                                    class="w-20 h-20 object-contain drop-shadow-lg" alt="{{ m.home_team }}">
+                                {{ get_short_name(m.home_team) }}
+                            </a>
+                        </div>
+                        <!-- MARCADOR Y LINK DETALLE -->    
+                        <div class="flex flex-col gap-4 mx-auto">
+                            <div class="px-4 py-4 bg-slate-900 rounded-3xl font-mono text-3xl border-2 border-slate-700 text-white shadow-2xl">
+                                {{ m.score or 'VS' }}
+                            </div>
+                            <a href="{{ url_for('match_detail', match_id=m.id) }}"
+                                class="text-[11px] font-black text-sky-500 uppercase tracking-widest hover:text-white transition-colors bg-sky-500/10 px-4 py-2 mb-2 rounded-xl border border-sky-500/20">
+                                Analizar Partido →
+                            </a>
+                        </div>
+                        <!-- EQUIPO VISITANTE -->
+                        <div class="flex-1 flex flex-col">
+                            <a href="/team/{{ m.id_away_team }}"
+                                class="text-3xl font-black uppercase tracking-tighter hover:text-sky-400 transition-colors mb-6 block flex flex-col items-center gap-4">
+                                <img src="{{ url_for('static', filename=m.id_away_team ~ '.png') }}"
+                                    onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'"
+                                    class="w-20 h-20 object-contain drop-shadow-lg" alt="{{ m.away_team }}">
+                                {{ get_short_name(m.away_team) }}
+                            </a>
+                        </div>
+                        <!-- PREDICCIONES -->
+                        <div class="grid grid-cols-2 gap-4 mx-auto">
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Tiros</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.s_home) }}">{{ m.preds.s_home
+                                    }}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Cabezazos</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.h_home) }}">{{ m.preds.h_home
+                                    }}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Faltas</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.f_home) }}">{{ m.preds.f_home
+                                    }}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Tarjetas</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.c_home) }}">{{ m.preds.c_home
+                                    }}</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 mx-auto">
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Tiros</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.s_gen) }}">{{ m.preds.s_gen}}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Cabezazos</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.h_gen) }}">{{ m.preds.h_gen}}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Faltas</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.f_gen) }}">{{ m.preds.f_gen}}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Tarjetas</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.c_gen) }}">{{ m.preds.c_gen}}</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 mx-auto">
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Tiros</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.s_away) }}">{{ m.preds.s_away}}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Cabezazos</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.h_away) }}">{{ m.preds.h_away}}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Faltas</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.f_away) }}">{{ m.preds.f_away}}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] font-black text-slate-500 uppercase">Tarjetas</span>
+                                <span class="text-xl font-black {{ score_color(m.preds.c_away) }}">{{ m.preds.c_away}}</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not matches %}
+                <div class="bg-slate-800/30 border-2 border-dashed border-slate-700 p-20 rounded-[3rem] text-center">
+                    <p class="text-slate-500 font-black uppercase tracking-widest">No hay partidos programados para esta
+                        fecha</p>
+                </div>
+                {% endif %}
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
         function stepGameweek(delta) {
             const gameweekSelect = document.getElementById('gameweek-select');
             const tournamentSelect = document.getElementById('tournament-select');
             const yearSelect = document.getElementById('year-select');
-            
+
             const currentGameweek = parseInt(gameweekSelect.value);
             const currentTournament = tournamentSelect.value;
             const currentYear = yearSelect.value;
-            
+
             let newGameweek = currentGameweek + delta;
             let newTournament = currentTournament;
             let newYear = currentYear;
-            
+
             // Logica para navegar hacia atras (delta = -1)
             if (delta === -1) {
                 if (newGameweek < 1) {
@@ -49,168 +277,20 @@
                     }
                 }
             }
-            
+
             // Actualizar los selects y enviar el formulario
             yearSelect.value = newYear;
             tournamentSelect.value = newTournament;
             gameweekSelect.value = newGameweek;
-            
+
+            document.getElementById('filter-form').submit();
+        }
+
+        function setSort(value) {
+            const input = document.getElementById('sort-input');
+            if (input.value === value) input.value = ''; 
+            else input.value = value;
             document.getElementById('filter-form').submit();
         }
     </script>
-    <div class="max-w-5xl mx-auto">
-        <!-- HEADER -->
-        <header class="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
-            <a href="/"><h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1></a>
-            <nav class="flex gap-4">
-                <a href="/" class="bg-sky-600 px-6 py-2 rounded-xl text-xs font-black uppercase shadow-lg">Partidos</a>
-                <a href="/stats" class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">Estadisticas Liga</a>
-            </nav>
-        </header>
-
-        <!-- FILTROS -->
-        <div class="flex sticky top-0 z-10 justify-center mb-12">
-            <form id="filter-form" class="flex flex-wrap items-stretch justify-center gap-0 bg-slate-800/40 rounded-[2rem] border border-slate-700/50 backdrop-blur-md shadow-2xl overflow-hidden">
-                <div class="flex flex-col border-r border-slate-700/50 p-4 hover:bg-slate-700/20 transition-colors">
-                    <label class="text-[9px] font-black uppercase text-sky-400 mb-1 tracking-[0.2em] text-center">Temporada</label>
-                    <select name="year" id="year-select" onchange="this.form.submit()" class="bg-transparent text-white text-sm font-bold outline-none cursor-pointer">
-                        {% for y in years %}
-                        <option value="{{ y }}" {% if current_year == y %}selected{% endif %} class="bg-slate-900">{{ y }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="flex flex-col border-r border-slate-700/50 p-4 hover:bg-slate-700/20 transition-colors">
-                    <label class="text-[9px] font-black uppercase text-sky-400 mb-1 tracking-[0.2em] text-center">Torneo</label>
-                    <select name="tournament" id="tournament-select" onchange="this.form.submit()" class="bg-transparent text-white text-sm font-bold outline-none cursor-pointer">
-                        <option value="Liga Profesional Apertura" {% if current_tournament == 'Liga Profesional Apertura' %}selected{% endif %} class="bg-slate-900">Apertura</option>
-                        <option value="Liga Profesional Clausura" {% if current_tournament == 'Liga Profesional Clausura' %}selected{% endif %} class="bg-slate-900">Clausura</option>
-                    </select>
-                </div>
-
-                <div class="flex items-center gap-4 p-4 hover:bg-slate-700/20 transition-colors">
-                    <button type="button" onclick="stepGameweek(-1)" class="p-2 rounded-full hover:bg-sky-500/20 text-sky-400 transition-all active:scale-90">
-                        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
-                    </button>
-                    
-                    <div class="flex flex-col items-center">
-                        <label class="text-[9px] font-black uppercase text-sky-400 mb-1 tracking-[0.2em]">Jornada</label>
-                        <select name="gameweek" id="gameweek-select" onchange="this.form.submit()" class="bg-transparent text-white text-sm font-bold outline-none cursor-pointer">
-                            {% for i in range(1, 21) %}
-                            <option value="{{ i }}" {% if current_gameweek|int == i %}selected{% endif %} class="bg-slate-900">Fecha {{ i }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <button type="button" onclick="stepGameweek(1)" class="p-2 rounded-full hover:bg-sky-500/20 text-sky-400 transition-all active:scale-90">
-                        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
-                    </button>
-                </div>
-            </form>
-        </div>
-        
-        <!-- GRILLA PARTIDOS -->
-        <div class="grid grid-cols-1 gap-8">
-            {% macro score_color(val) %}{% if val <= 30 %}text-red-500{% elif val <= 70 %}text-blue-500{% else %}text-green-500{% endif %}{% endmacro %}
-            {% for m in matches %}
-            <!-- TARJETA PARTIDO -->
-            <div class="bg-slate-800 p-8 rounded-[2.5rem] border border-slate-700 shadow-lg relative overflow-hidden transition-all hover:border-slate-600">
-                    
-                    <div class="flex flex-wrap justify-between items-center mb-8 border-b border-slate-700/50 pb-4 gap-4">
-                        <div class="flex items-center gap-4">
-                            <span class="bg-sky-500/10 text-sky-400 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-sky-500/20">{{ m.tournament }}</span>
-                            <span class="text-[14px] font-black text-slate-300 tracking-tighter">{{ m.date[:16] }}</span>
-                            <div class="flex items-center gap-2">
-                                <span class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">arbitro:</span>
-                                
-                                <div class="flex items-center gap-1.5">
-                                    {% if m.referee %}
-                                        <a href="/referee/{{ m.referee }}" 
-                                        class="text-sm font-bold text-slate-200 italic hover:text-sky-400 transition-colors">
-                                            {{ m.referee }}
-                                        </a>
-                                    {% else %}
-                                        <span class="text-sm font-medium text-slate-500 italic tracking-tight">
-                                            Por designar
-                                        </span>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                        <span class="text-[10px] font-black uppercase tracking-widest {% if m.finished %}text-slate-500{% else %}text-emerald-400 animate-pulse{% endif %}">
-                            {% if m.finished %}FINALIZADO{% else %}PENDIENTE{% endif %}
-                        </span>
-                    </div>
-                    
-                    <div class="flex items-center justify-between gap-2">
-
-                        <div class="flex-1 flex flex-col items-center text-center">
-                            <a href="/team/{{ m.id_home_team }}" class="text-3xl font-black uppercase tracking-tighter hover:text-sky-400 transition-colors mb-6 block flex flex-col items-center gap-4">
-                                <img src="{{ url_for('static', filename=m.id_home_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-20 h-20 object-contain drop-shadow-lg" alt="{{ m.home_team }}">
-                                {{ get_short_name(m.home_team) }}
-                            </a>
-                            <div class="grid grid-cols-2 gap-x-8 gap-y-4">
-                                <div class="flex flex-col">
-                                    <span class="text-[9px] font-black text-slate-500 uppercase">Tiros</span>
-                                    <span class="text-xl font-black {{ score_color(m.preds.s_home) }}">{{ m.preds.s_home }}</span>
-                                </div>
-                                <div class="flex flex-col">
-                                    <span class="text-[9px] font-black text-slate-500 uppercase">Cabezazos</span>
-                                    <span class="text-xl font-black {{ score_color(m.preds.h_home) }}">{{ m.preds.h_home }}</span>
-                                </div>
-                                <div class="flex flex-col">
-                                    <span class="text-[9px] font-black text-slate-500 uppercase">Faltas</span>
-                                    <span class="text-xl font-black {{ score_color(m.preds.f_home) }}">{{ m.preds.f_home }}</span>
-                                </div>
-                                <div class="flex flex-col">
-                                    <span class="text-[9px] font-black text-slate-500 uppercase">Tarjetas</span>
-                                    <span class="text-xl font-black {{ score_color(m.preds.c_home) }}">{{ m.preds.c_home }}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="flex flex-col items-center gap-4 px-4">
-                            <div class="px-8 py-4 bg-slate-900 rounded-3xl font-mono text-3xl border-2 border-slate-700 text-white shadow-2xl">
-                                {{ m.score or 'VS' }}
-                            </div>
-                            <a href="{{ url_for('match_detail', match_id=m.id) }}" class="text-[11px] font-black text-sky-500 uppercase tracking-widest hover:text-white transition-colors bg-sky-500/10 px-4 py-2 rounded-xl border border-sky-500/20">
-                                Analizar Detalle →
-                            </a>
-                        </div>
-
-                        <div class="flex-1 flex flex-col items-center text-center">
-                            <a href="/team/{{ m.id_away_team }}" class="text-3xl font-black uppercase tracking-tighter hover:text-sky-400 transition-colors mb-6 block flex flex-col items-center gap-4">
-                                <img src="{{ url_for('static', filename=m.id_away_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-20 h-20 object-contain drop-shadow-lg" alt="{{ m.away_team }}">
-                                {{ get_short_name(m.away_team) }}
-                            </a>
-                            <div class="grid grid-cols-2 gap-x-8 gap-y-4">
-                                <div class="flex flex-col">
-                                    <span class="text-[9px] font-black text-slate-500 uppercase">Tiros</span>
-                                    <span class="text-xl font-black {{ score_color(m.preds.s_away) }}">{{ m.preds.s_away }}</span>
-                                </div>
-                                <div class="flex flex-col">
-                                    <span class="text-[9px] font-black text-slate-500 uppercase">Cabezazos</span>
-                                    <span class="text-xl font-black {{ score_color(m.preds.h_away) }}">{{ m.preds.h_away }}</span>
-                                </div>
-                                <div class="flex flex-col">
-                                    <span class="text-[9px] font-black text-slate-500 uppercase">Faltas</span>
-                                    <span class="text-xl font-black {{ score_color(m.preds.f_away) }}">{{ m.preds.f_away }}</span>
-                                </div>
-                                <div class="flex flex-col">
-                                    <span class="text-[9px] font-black text-slate-500 uppercase">Tarjetas</span>
-                                    <span class="text-xl font-black {{ score_color(m.preds.c_away) }}">{{ m.preds.c_away }}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-            {% endfor %}
-            {% if not matches %}
-            <div class="bg-slate-800/30 border-2 border-dashed border-slate-700 p-20 rounded-[3rem] text-center">
-                <p class="text-slate-500 font-black uppercase tracking-widest">No hay partidos programados para esta fecha</p>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-    {% include 'footer.html' %}</body></html>
+{% endblock %}

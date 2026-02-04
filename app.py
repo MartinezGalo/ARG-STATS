@@ -160,8 +160,10 @@ def get_lineup_data(match_id, team_id, cards_dict):
     """
     conn = get_db_connection()
     players = conn.execute('''
-        SELECT * FROM player_match_details 
-        WHERE match_id = ? AND team_id = ? AND is_starter = 1 AND role_x IS NOT NULL
+        SELECT p.*, 
+        EXISTS(SELECT 1 FROM player_notes pn WHERE pn.player_id = p.player_id AND pn.notes IS NOT NULL AND pn.notes != '') as has_note
+        FROM player_match_details p 
+        WHERE p.match_id = ? AND p.team_id = ? AND p.is_starter = 1 AND p.role_x IS NOT NULL
     ''', (str(match_id), str(team_id))).fetchall()
     conn.close()
     res = []
@@ -227,6 +229,10 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
         elif category == 'fouls':
             made_q = "SELECT team_id as rank_team, SUM(fouls_committed) as total FROM player_match_details GROUP BY rank_team"
             against_q = "SELECT team_id as rank_team, SUM(fouls_received) as total FROM player_match_details GROUP BY rank_team"
+
+        elif category == 'assists':
+            made_q = "SELECT team_id as rank_team, COUNT(*) as total FROM goals WHERE assist_id IS NOT NULL AND assist_id != '' GROUP BY rank_team"
+            against_q = "SELECT (CASE WHEN g.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM goals g JOIN matches m ON g.match_id = m.id WHERE g.assist_id IS NOT NULL AND g.assist_id != '' GROUP BY rank_team"
 
         res_made = conn.execute(made_q).fetchall()
         res_against = conn.execute(against_q).fetchall()
@@ -317,6 +323,12 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
             q_against = f"SELECT SUM(pmd.fouls_received) FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str})"
             total_a = conn.execute(q_against, (str(tid),)).fetchone()[0] or 0
 
+        elif category == 'assists':
+            q_made = f"SELECT COUNT(*) FROM goals WHERE team_id = ? AND match_id IN ({ids_str}) AND assist_id IS NOT NULL AND assist_id != ''"
+            total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
+            q_against = f"SELECT COUNT(*) FROM goals g JOIN matches m ON g.match_id = m.id WHERE (CASE WHEN g.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND g.match_id IN ({ids_str}) AND g.assist_id IS NOT NULL AND g.assist_id != ''"
+            total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
+
         avg_m = round(total_m / pj, 2) if pj > 0 else 0
         avg_a = round(total_a / pj, 2) if pj > 0 else 0
 
@@ -358,6 +370,9 @@ def _get_stat_sql_config(rank_type, filter_type):
     elif rank_type == 'yellows' or rank_type == 'cards':
         base_join = "LEFT JOIN cards c ON pmd.player_id = c.player_id AND pmd.match_id = c.match_id"
         val_col = "COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0)"
+    elif rank_type == 'assists':
+        base_join = "LEFT JOIN goals g ON pmd.player_id = g.assist_id AND pmd.match_id = g.match_id"
+        val_col = "COUNT(g.shot_id)"
     elif rank_type == 'fouls':
         val_col = "SUM(pmd.fouls_committed)"
     elif rank_type == 'fouls_rec' or rank_type == 'fouls_received':
@@ -373,7 +388,7 @@ def get_rankings_from_stats(category='shots', filter_type='all', order_by='total
     rank_against = {item['id']: i+1 for i, item in enumerate(against_list)}
     return rank_made, rank_against
 
-def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', limit=None, match_id=None):
+def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', limit=None, match_id=None, order_by='total'):
     """
     Ranking de jugadores individuales. 
     Si limit tiene valor (ej: 5), busca solo los ultimos N partidos finalizados del equipo.
@@ -409,7 +424,7 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
     '''
     
     res = conn.execute(query, (str(team_id),)).fetchall()
-    u_map = {"tiradores": "tiros", "shots": "tiros", "goals":"goles", "headers": "cabezazos", "yellows": "tarjetas", "cards": "tarjetas", "fouls": "faltas", "fouls_rec": "faltas recibidas", "fouls_received": "recibidas"}
+    u_map = {"tiradores": "tiros", "shots": "tiros", "goals":"goles", "headers": "cabezazos", "yellows": "tarjetas", "cards": "tarjetas", "fouls": "faltas", "fouls_rec": "faltas recibidas", "fouls_received": "recibidas", "assists": "asistencias"}
     conn.close()
     
     output = []
@@ -429,6 +444,12 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
             "minutes": mins,
             "avg": avg
         })
+    
+    if order_by == 'avg':
+        output.sort(key=lambda x: x['avg'], reverse=True)
+    else:
+        output.sort(key=lambda x: x['val'], reverse=True)
+        
     return output
 
 
@@ -556,6 +577,9 @@ def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', o
         elif rank_type in ('fouls_rec', 'fouls_received'):
             q = f"SELECT pmd.player_id as pid, pmd.last_name as pname, pmd.team_id as t_id, SUM(pmd.fouls_received) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
             rows = conn.execute(q, (str(tid),)).fetchall()
+        elif rank_type == 'assists':
+            q = f"SELECT g.assist_id as pid, pmd.last_name as pname, g.team_id as t_id, COUNT(*) as total FROM goals g JOIN player_match_details pmd ON g.assist_id = pmd.player_id AND g.match_id = pmd.match_id WHERE g.team_id = ? AND g.match_id IN ({ids_str}) AND g.assist_id IS NOT NULL AND g.assist_id != '' GROUP BY g.assist_id"
+            rows = conn.execute(q, (str(tid),)).fetchall()
         else:
             rows = []
 
@@ -625,8 +649,16 @@ def index():
         pf = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'fouls', referee=row['referee'], precalc_ranks=(rf_m, rf_a, ref_f))
         row['preds'] = { 's_home': ps['h'], 's_away': ps['v'], 's_gen': ps['gen'], 'h_home': ph['h'], 'h_away': ph['v'], 'h_gen': ph['gen'], 'c_home': pc['h'], 'c_away': pc['v'], 'c_gen': pc['gen'],'c_ref': pc['ref_rank'], 'f_home': pf['h'], 'f_away': pf['v'], 'f_gen': pf['gen'], 'f_ref': pf['ref_rank']}
         matches.append(row)
+
+    sort_by = request.args.get('sort_by')
+    if sort_by:
+        key_map = {'shots': 's', 'headers': 'h', 'fouls': 'f', 'cards': 'c'}
+        prefix = key_map.get(sort_by)
+        if prefix:
+            matches.sort(key=lambda x: max(x['preds'][f'{prefix}_home'], x['preds'][f'{prefix}_away'], x['preds'][f'{prefix}_gen']), reverse=True)
+
     conn.close()
-    return render_template('index.html', matches=matches, years=years, current_year=year, current_tournament=tournament, current_gameweek=gameweek)
+    return render_template('index.html', matches=matches, years=years, current_year=year, current_tournament=tournament, current_gameweek=gameweek, current_sort=sort_by)
 
 @app.route('/stats')
 def stats_page():
@@ -783,12 +815,14 @@ def match_detail(match_id):
 def api_team_ranking(team_id):
     limit = request.args.get('limit', type=int)
     match_id = request.args.get('match_id') # Capturamos el match_id
+    order_by = request.args.get('order_by', 'total')
     return jsonify(get_team_rankings_logic(
         team_id, 
         request.args.get('type', 'tiradores'), 
         request.args.get('filter', 'all'), 
         limit,
-        match_id
+        match_id,
+        order_by
     ))
 
 @app.route('/api/team_stats')

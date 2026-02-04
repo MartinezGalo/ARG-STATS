@@ -1,5 +1,8 @@
-<!DOCTYPE html>
-<html lang="es">
+{% extends 'base.html' %}
+
+{% block title %}{{ team_name }} - ARG STATS{% endblock %}
+
+{% block head %}
 <style>
     .custom-scroll::-webkit-scrollbar { width: 6px; }
     .custom-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
@@ -21,140 +24,11 @@
     #player-ranking-list {  min-height: 500px; display: flex; flex-direction: column; }
     
 </style>
-<head>
-    <meta charset="UTF-8">
-    <meta name="author" content="MartinezGalo & francoqdev">
-    <meta name="copyright" content="ARG STATS">
-    <title>{{ team_name }} - ARG STATS</title><script src="https://cdn.tailwindcss.com"></script><style>body{background-color:#0f172a;color:#f8fafc;}</style>
-    <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
-</head>
-<body class="p-8 font-sans">
-        <script>
-        function showMatches(type) {
-            const finished = document.getElementById('matches-finished');
-            const upcoming = document.getElementById('matches-upcoming');
-            const btnFinished = document.getElementById('btn-finished');
-            const btnUpcoming = document.getElementById('btn-upcoming');
+{% endblock %}
 
-            if (type === 'finished') {
-                finished.classList.remove('hidden');
-                upcoming.classList.add('hidden');
-                btnFinished.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
-                btnFinished.classList.remove('text-slate-500');
-                btnUpcoming.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
-                btnUpcoming.classList.add('text-slate-500');
-            } else {
-                finished.classList.add('hidden');
-                upcoming.classList.remove('hidden');
-                btnUpcoming.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
-                btnUpcoming.classList.remove('text-slate-500');
-                btnFinished.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
-                btnFinished.classList.add('text-slate-500');
-            }
-        }
+{% block body_class %}p-8 font-sans{% endblock %}
 
-        let currentType = 'tiradores';
-        let isL5 = false;
-        let teamPlayerData = []; 
-        let playerPage = 1;
-        const playersPerPage = 10; // Cuantos mostrar por pagina
-        const teamId = "{{ team_id }}";
-
-        // 1. Alternar ultimos 5 partidos
-        function toggleL5() {
-            isL5 = !isL5;
-            const btn = document.getElementById('l5-btn');
-            if (isL5) {
-                btn.classList.remove('text-slate-500', 'border-slate-700');
-                btn.classList.add('bg-sky-500', 'text-white', 'border-transparent');
-            } else {
-                btn.classList.add('text-slate-500', 'border-slate-700');
-                btn.classList.remove('bg-sky-500', 'text-white', 'border-transparent');
-            }
-            updateTeamRanking(teamId, currentType); // Recargar
-        }
-
-        // 2. Funcion unica para dibujar la lista
-        function renderPlayerPage() {
-            const list = document.getElementById('player-ranking-list');
-            const info = document.getElementById('player-page-info');
-            
-            const start = (playerPage - 1) * playersPerPage;
-            const visibleData = teamPlayerData.slice(start, start + playersPerPage);
-            const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
-
-            info.innerText = `${playerPage} / ${totalPages}`;
-            
-            list.innerHTML = visibleData.map(r => `
-                <div class="player-card ${r.is_transferred ? 'border-red-500/50' : ''}" data-pid="${r.player_id}">
-                    <div class="flex justify-between items-center gap-2">
-                        <span class="font-bold truncate text-[14px] ${r.is_transferred ? 'text-red-400' : 'text-slate-200'}">
-                            <span class="text-sky-500 mr-1">#${r.number || '-'} </span>${r.name}<span class="text-slate-500 text-[11px] italic"> (${r.pos})</span>
-                        </span>
-                        <span class="text-[12px] font-bold italic whitespace-nowrap ${r.is_transferred ? 'text-red-400' : 'text-slate-400'} text-right">
-                            <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[14px]">${r.val}</span> ${r.unit} en <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[13px]">${r.pj}</span> PJ | <span class="text-emerald-400">${r.avg}</span> / 90
-                        </span>
-                    </div>
-                </div>`).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-10">Sin datos.</p>';
-        }
-
-        // 3. Cambiar de pagina
-        function changePage(delta) {
-            const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
-            let next = playerPage + delta;
-            if (next >= 1 && next <= totalPages) {
-                playerPage = next;
-                renderPlayerPage();
-            }
-        }
-
-        // 4. Cargar datos desde la API
-        function updateTeamRanking(tId, rankType, shotFilter = 'all', e = null) {
-            currentType = rankType;
-            
-            // Manejo de UI de botones
-            if (e && e.currentTarget) {
-                const isSubBtn = e.currentTarget.classList.contains('sub-btn');
-                const buttons = document.querySelectorAll(isSubBtn ? `#sub-filters button` : `.rank-btn`);
-                buttons.forEach(b => { 
-                    b.classList.remove('bg-sky-500', 'text-white'); 
-                    b.classList.add('bg-slate-800', 'text-slate-500'); // text-slate-400 was used in HTML but JS sets 500
-                });
-                e.currentTarget.classList.remove('bg-slate-800', 'text-slate-500', 'text-slate-400');
-                e.currentTarget.classList.add('bg-sky-500', 'text-white');
-            }
-
-            const subMenu = document.getElementById(`sub-filters`);
-            if (rankType === 'tiradores') { 
-                subMenu.style.display = 'flex';
-                const subBtns = subMenu.querySelectorAll('button');
-                subBtns.forEach(b => {
-                    const type = b.id.split('-').pop(); // all, target, long
-                    if (type === shotFilter) {
-                        b.classList.remove('bg-slate-800', 'text-slate-500');
-                        b.classList.add('bg-sky-500', 'text-white');
-                    } else {
-                        b.classList.add('bg-slate-800', 'text-slate-500');
-                        b.classList.remove('bg-sky-500', 'text-white');
-                    }
-                });
-            } else { 
-                subMenu.style.display = 'none'; 
-            }
-
-            
-            const limit = isL5 ? 5 : '';
-            fetch(`/api/team_ranking/${tId}?type=${rankType}&filter=${shotFilter}&limit=${limit}`)
-                .then(r => r.json())
-                .then(data => { 
-                    teamPlayerData = data; 
-                    playerPage = 1; 
-                    renderPlayerPage(); 
-                });
-        }
-
-        window.onload = () => { updateTeamRanking(teamId, 'tiradores'); };
-    </script>
+{% block content %}
     <div class="max-w-[80dvw] mx-auto space-y-12">
         <!-- HEADER -->
         <header class="flex justify-between items-center">
@@ -282,6 +156,7 @@
                     <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px]">
                         <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold rank-btn" id="btn-main">Tiros</button>
                         <button onclick="updateTeamRanking('{{ team_id }}', 'goals', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Goles</button>
+                        <button onclick="updateTeamRanking('{{ team_id }}', 'assists', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Asistencias</button>
                         <button onclick="updateTeamRanking('{{ team_id }}', 'headers', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Cabezazos</button>
                         <button onclick="updateTeamRanking('{{ team_id }}', 'yellows', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Tarjetas</button>
                         <button onclick="updateTeamRanking('{{ team_id }}', 'fouls', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas</button>
@@ -309,4 +184,133 @@
             </div>
         </div>
     </div>
-    {% include 'footer.html' %}</body></html>
+{% endblock %}
+
+{% block scripts %}
+        <script>
+        function showMatches(type) {
+            const finished = document.getElementById('matches-finished');
+            const upcoming = document.getElementById('matches-upcoming');
+            const btnFinished = document.getElementById('btn-finished');
+            const btnUpcoming = document.getElementById('btn-upcoming');
+
+            if (type === 'finished') {
+                finished.classList.remove('hidden');
+                upcoming.classList.add('hidden');
+                btnFinished.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                btnFinished.classList.remove('text-slate-500');
+                btnUpcoming.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+                btnUpcoming.classList.add('text-slate-500');
+            } else {
+                finished.classList.add('hidden');
+                upcoming.classList.remove('hidden');
+                btnUpcoming.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                btnUpcoming.classList.remove('text-slate-500');
+                btnFinished.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+                btnFinished.classList.add('text-slate-500');
+            }
+        }
+
+        let currentType = 'tiradores';
+        let isL5 = false;
+        let teamPlayerData = []; 
+        let playerPage = 1;
+        const playersPerPage = 10; // Cuantos mostrar por pagina
+        const teamId = "{{ team_id }}";
+
+        // 1. Alternar ultimos 5 partidos
+        function toggleL5() {
+            isL5 = !isL5;
+            const btn = document.getElementById('l5-btn');
+            if (isL5) {
+                btn.classList.remove('text-slate-500', 'border-slate-700');
+                btn.classList.add('bg-sky-500', 'text-white', 'border-transparent');
+            } else {
+                btn.classList.add('text-slate-500', 'border-slate-700');
+                btn.classList.remove('bg-sky-500', 'text-white', 'border-transparent');
+            }
+            updateTeamRanking(teamId, currentType); // Recargar
+        }
+
+        // 2. Funcion unica para dibujar la lista
+        function renderPlayerPage() {
+            const list = document.getElementById('player-ranking-list');
+            const info = document.getElementById('player-page-info');
+            
+            const start = (playerPage - 1) * playersPerPage;
+            const visibleData = teamPlayerData.slice(start, start + playersPerPage);
+            const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
+
+            info.innerText = `${playerPage} / ${totalPages}`;
+            
+            list.innerHTML = visibleData.map(r => `
+                <div class="player-card ${r.is_transferred ? 'border-red-500/50' : ''}" data-pid="${r.player_id}">
+                    <div class="flex justify-between items-center gap-2">
+                        <span class="font-bold truncate text-[14px] ${r.is_transferred ? 'text-red-400' : 'text-slate-200'}">
+                            <span class="text-sky-500 mr-1">#${r.number || '-'} </span>${r.name}<span class="text-slate-500 text-[11px] italic"> (${r.pos})</span>
+                        </span>
+                        <span class="text-[12px] font-bold italic whitespace-nowrap ${r.is_transferred ? 'text-red-400' : 'text-slate-400'} text-right">
+                            <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[14px]">${r.val}</span> ${r.unit} en <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[13px]">${r.pj}</span> PJ | <span class="text-emerald-400">${r.avg}</span> / 90
+                        </span>
+                    </div>
+                </div>`).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-10">Sin datos.</p>';
+        }
+
+        // 3. Cambiar de pagina
+        function changePage(delta) {
+            const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
+            let next = playerPage + delta;
+            if (next >= 1 && next <= totalPages) {
+                playerPage = next;
+                renderPlayerPage();
+            }
+        }
+
+        // 4. Cargar datos desde la API
+        function updateTeamRanking(tId, rankType, shotFilter = 'all', e = null) {
+            currentType = rankType;
+            
+            // Manejo de UI de botones
+            if (e && e.currentTarget) {
+                const isSubBtn = e.currentTarget.classList.contains('sub-btn');
+                const buttons = document.querySelectorAll(isSubBtn ? `#sub-filters button` : `.rank-btn`);
+                buttons.forEach(b => { 
+                    b.classList.remove('bg-sky-500', 'text-white'); 
+                    b.classList.add('bg-slate-800', 'text-slate-500'); // text-slate-400 was used in HTML but JS sets 500
+                });
+                e.currentTarget.classList.remove('bg-slate-800', 'text-slate-500', 'text-slate-400');
+                e.currentTarget.classList.add('bg-sky-500', 'text-white');
+            }
+
+            const subMenu = document.getElementById(`sub-filters`);
+            if (rankType === 'tiradores') { 
+                subMenu.style.display = 'flex';
+                const subBtns = subMenu.querySelectorAll('button');
+                subBtns.forEach(b => {
+                    const type = b.id.split('-').pop(); // all, target, long
+                    if (type === shotFilter) {
+                        b.classList.remove('bg-slate-800', 'text-slate-500');
+                        b.classList.add('bg-sky-500', 'text-white');
+                    } else {
+                        b.classList.add('bg-slate-800', 'text-slate-500');
+                        b.classList.remove('bg-sky-500', 'text-white');
+                    }
+                });
+            } else { 
+                subMenu.style.display = 'none'; 
+            }
+
+            
+            const limit = isL5 ? 5 : '';
+            fetch(`/api/team_ranking/${tId}?type=${rankType}&filter=${shotFilter}&limit=${limit}`)
+                .then(r => r.json())
+                .then(data => { 
+                    teamPlayerData = data; 
+                    playerPage = 1; 
+                    renderPlayerPage(); 
+                });
+        }
+
+        window.onload = () => { updateTeamRanking(teamId, 'tiradores'); };
+    </script>
+{% endblock %}

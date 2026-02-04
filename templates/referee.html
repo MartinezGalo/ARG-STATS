@@ -1,22 +1,19 @@
+{% extends 'base.html' %}
 
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="author" content="MartinezGalo & francoqdev">
-    <meta name="copyright" content="ARG STATS">
+{% block title %}{{ ref_name }} - ARG STATS{% endblock %}
 
-    <title>arbitro: {{ ref_name }} - ARG STATS</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+{% block head %}
     <style>
-        body{background-color:#0f172a;color:#f8fafc;}
         .custom-scroll::-webkit-scrollbar { width: 6px; }
         .custom-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
         .custom-scroll::-webkit-scrollbar-thumb:hover { background: #0ea5e9; }
     </style>
-</head>
-<body class="p-8 font-sans">
+{% endblock %}
+
+{% block body_class %}p-8 font-sans{% endblock %}
+
+{% block content %}
     <div class="max-w-[80dvw] mx-auto space-y-12">
         <!-- HEADER -->
         <header class="flex justify-between items-center">
@@ -146,4 +143,4 @@
             </div>
         </div>
     </div>
-    {% include 'footer.html' %}</body></html>
+{% endblock %}

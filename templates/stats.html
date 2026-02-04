@@ -1,13 +1,9 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8"><title>ARG STATS</title>
-    <meta name="author" content="MartinezGalo & francoqdev">
-    <meta name="copyright" content="ARG STATS">
-    <link rel="icon" href="{{ url_for('static', filename='lpf.png') }}?v=2" type="image/png">
-    <script src="https://cdn.tailwindcss.com"></script>
+{% extends 'base.html' %}
+
+{% block title %}ARG STATS{% endblock %}
+
+{% block head %}
     <style>
-        body { background-color: #0f172a; color: #f8fafc; }
         .custom-scroll::-webkit-scrollbar { width: 6px; }
         .custom-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
@@ -16,8 +12,11 @@
         .btn-inactive { background-color: #1e293b; color: #94a3b8; border-color: #334155; }
         .btn-inactive:hover { color: white; border-color: #475569; }
     </style>
-</head>
-<body class="p-8 pb-0 font-sans">
+{% endblock %}
+
+{% block body_class %}p-8 pb-0 font-sans{% endblock %}
+
+{% block content %}
     <div class="max-w-[1500px] mx-auto">
         <!-- HEADER -->
         <header class="flex flex-col md:flex-row justify-between items-center mb-4 gap-6">
@@ -41,6 +40,7 @@
             <div class="flex flex-wrap justify-center gap-2">
                 <button onclick="setCategory('shots')" id="btn-cat-shots" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Tiros</button>
                 <button onclick="setCategory('goals')" id="btn-cat-goals" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Goles</button>
+                <button onclick="setCategory('assists')" id="btn-cat-assists" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Asistencias</button>
                 <button onclick="setCategory('headers')" id="btn-cat-headers" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Cabezazos</button>
                 <button onclick="setCategory('cards')" id="btn-cat-cards" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Tarjetas</button>
                 <button onclick="setCategory('fouls')" id="btn-cat-fouls" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Faltas</button>
@@ -60,7 +60,9 @@
             <!-- El contenido se inyecta via JS -->
         </div>
     </div>
+{% endblock %}
 
+{% block scripts %}
     <script>
     const TEAM_MAP = {{ team_map|safe }};
     function getShortName(name) { return TEAM_MAP[name] || name; }
@@ -95,6 +97,7 @@
         players: {
             shots: 'Rematadores',
             goals: 'Goleadores',
+            assists: 'Asistidores',
             headers: 'Cabezazos',
             cards: 'Tarjetas Recibidas',
             fouls: 'Faltas Cometidas',
@@ -156,14 +159,14 @@
         });
 
         // Categorias
-        const cats = ['shots','goals', 'headers', 'cards', 'fouls', 'fouls_received'];
+        const cats = ['shots','goals', 'assists', 'headers', 'cards', 'fouls', 'fouls_received'];
         cats.forEach(c => {
             const btn = document.getElementById(`btn-cat-${c}`);
             let show = true;
             
             // Logic for visibility
-            if (state.mode === 'referees' && (c === 'shots' || c === 'goals' || c === 'headers' || c === 'fouls_received')) show = false;
-            if (state.mode === 'teams' && c === 'fouls_received') show = false;
+            if (state.mode === 'referees' && (c === 'shots' || c === 'goals' || c === 'headers' || c === 'assists' || c === 'fouls_received')) show = false;
+            if (state.mode === 'teams' && (c === 'fouls_received' || c === 'assists')) show = false;
 
             if (!show) {
                 btn.style.display = 'none';
@@ -177,7 +180,7 @@
             }
         });
         
-        if (state.mode === 'referees' && (state.category === 'shots' || state.category === 'headers' || state.category === 'fouls_received')) {
+        if (state.mode === 'referees' && (state.category === 'shots' || state.category === 'headers' || state.category === 'assists' || state.category === 'fouls_received')) {
             state.category = 'cards';
             updateUI();
             return;
@@ -390,4 +393,4 @@
 
     init();
     </script>
-    {% include 'footer.html' %}</body></html>
+{% endblock %}

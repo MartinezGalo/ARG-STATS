@@ -46,7 +46,12 @@ def initialize_database():
             role_x REAL,
             role_y REAL,
             fouls_committed INTEGER,
-            fouls_received INTEGER, -- Scalability: added a stat here
+            fouls_received INTEGER,
+            tackles INTEGER,
+            offsides INTEGER,
+            corners INTEGER,
+            unavailable BOOLEAN,
+            unavailability_reason TEXT,
             PRIMARY KEY (match_id, player_id),
             FOREIGN KEY(match_id) REFERENCES matches(id)
         )
@@ -58,14 +63,19 @@ def initialize_database():
             shot_id INTEGER PRIMARY KEY AUTOINCREMENT,
             match_id TEXT,
             player_id TEXT,
-            first_name TEXT,
-            last_name TEXT,
             team_id TEXT,
             minute TEXT,
             on_target BOOLEAN,
             shot_type TEXT,
             situation TEXT,
             outcome TEXT,
+            x REAL,
+            y REAL,
+            goal_cross_x REAL,
+            goal_cross_y REAL,
+            blocked_x REAL,
+            blocked_y REAL,
+            is_blocked BOOLEAN,
             own_goal BOOLEAN,
             assist_id TEXT,
             inside_box BOOLEAN,
@@ -80,8 +90,6 @@ def initialize_database():
             card_id INTEGER PRIMARY KEY AUTOINCREMENT,
             match_id TEXT,
             player_id TEXT,
-            first_name TEXT,
-            last_name TEXT,
             team_id TEXT,
             card_type TEXT, -- Yellow, Red, YellowRed
             minute TEXT,
@@ -89,6 +97,11 @@ def initialize_database():
             FOREIGN KEY(match_id, player_id) REFERENCES player_match_details(match_id, player_id)
         )
     ''')
+
+        # Tablas de notas
+    cursor.execute('CREATE TABLE IF NOT EXISTS player_notes (player_id TEXT PRIMARY KEY, notes TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS match_notes (match_id TEXT PRIMARY KEY, notes TEXT)')
+            
 
 
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmd_player_match ON player_match_details (player_id, match_id);')

@@ -7,11 +7,20 @@ import os
 import logging
 from datetime import datetime, timedelta
 
+import undetected_chromedriver as uc
+from selenium.webdriver.chrome.options import Options
+from bs4 import BeautifulSoup
+import json
+import time
+import logging
+import os
+import pandas as pd
+from datetime import datetime, timedelta
+
 class FotMob:
     def __init__(self):
         self.scraper = cloudscraper.create_scraper()
         self.base_url = "https://www.fotmob.com"
-
 
 
     def fotmob_request(self, path):
@@ -31,7 +40,7 @@ class FotMob:
                 response = self.scraper.get(url, headers=headers, timeout=10)
                 
                 if response.status_code != 200:
-                    print(f"Error en FotMob API: {response.status_code} para la URL: {url}")
+                    logging.error(f"Error en FotMob API: {response.status_code} para la URL: {url}")
                 
                 # FotMob a veces requiere un pequeño delay para no ser baneado
                 time.sleep(1) 
@@ -42,7 +51,7 @@ class FotMob:
             
             
     def request_match_details(self, match_id):
-        """Get match deatils with a request.
+        """Get match details with a request.
 
         Args:
             match_id (str): id of a certain match, could be found in the URL
@@ -53,7 +62,6 @@ class FotMob:
         path = f'api/matchDetails?matchId={match_id}'
         response = self.fotmob_request(path)
         return response
-
 
 
 DB_NAME = "LIGA_ARG_2025.db"
@@ -159,26 +167,47 @@ def load_match_directly(match_id, connection):
             team_data = lineup.get(side, {})
             team_id = str(team_data.get("id"))
 
-            for section in ["starters", "subs"]:
+            for section in ["starters", "subs", "unavailable"]:
                 for p in team_data.get(section, []):
 
+
                     pid = str(p.get("id"))
+                    # Extracción de posición y stats básicas
+                    p_pos_id = p.get("usualPlayingPositionId", None)
+                    
                     p_stat_info = player_stats_map.get(pid, {})
+
                     all_stats = {}
-                    
                     for group in p_stat_info.get("stats", []):
-                        for _, item in group.get("stats", {}).items():
-                            if item.get("key"): all_stats[item["key"]] = item.get("stat", {}).get("value", 0)
+                        for _, item_data in group.get("stats", {}).items():
+                            key = item_data.get("key")
+                            if key: all_stats[key] = item_data.get("stat", {}).get("value", 0)
                     
-                    p_minutes = int(all_stats.get("minutes_played", 90 if section == "starters" else 0))
-                    
-                    # Si es titular pero no hay stats, asumimos 90 si el partido terminó (logica de descarga.py)
-                    if section == "starters" and p_minutes == 0 and status.get("finished"):
-                        p_minutes = 90
+                    # Configuración de estadísticas: (Nombre interno, Clave en API)
+                    stat_map = {
+                        "fouls_committed": "fouls",
+                        "fouls_received": "was_fouled",
+                        "minutes_played": "minutes_played",
+                        "tackles": "matchstats.headers.tackles",
+                        "offsides": "Offsides",
+                        "corners": "corners"
+                    }
+
+                    current_stats = {k: all_stats.get(v, 0) for k, v in stat_map.items()}
 
                     is_starter = (section == "starters")
                     
-                    # Logic for substitutions
+                    # Lógica generalizada para limpiar stats
+                    if section == "unavailable":
+                        for k in current_stats:
+                            current_stats[k] = None
+                    elif section == "subs":
+                        # Si no jugó (minutos 0), limpiar el resto
+                        if current_stats["minutes_played"] == 0:
+                            for k in current_stats:
+                                if k != "minutes_played":
+                                    current_stats[k] = None
+
                     sub_id = None
                     sub_minute = None
                     if not is_starter:
@@ -187,6 +216,9 @@ def load_match_directly(match_id, connection):
                                 sub_id = sub["p_out"]
                                 sub_minute = sub["minute"]
                                 break
+                    
+                    def safe_int(val):
+                        return int(val) if val is not None else None
 
                     player_rows.append({
                         "match_id": str(match_id),
@@ -194,17 +226,22 @@ def load_match_directly(match_id, connection):
                         "team_id": team_id,
                         "first_name": p.get("firstName"),
                         "last_name": p.get("lastName"),
-                        "position": pos_map.get(p.get("usualPlayingPositionId"), "N/A"),
-                        "shirt_number": p.get("shirtNumber"),
-                        "rating": p.get("performance", {}).get("rating", 0.0),
-                        "role_x": p.get("verticalLayout", {}).get("y", 0.0),
-                        "role_y": p.get("verticalLayout", {}).get("x", 0.0),
-                        "is_starter": is_starter, 
-                        "minutes_played": int(p_minutes),
+                        "position": pos_map.get(p_pos_id, None),
+                        "shirt_number": p.get("shirtNumber", None),
+                        "rating": p.get("performance", {}).get("rating", None),
+                        "role_x": p.get("verticalLayout", {}).get("y", None),
+                        "role_y": p.get("verticalLayout", {}).get("x", None),
+                        "is_starter": is_starter,
+                        "minutes_played": safe_int(current_stats["minutes_played"]),
                         "substitution": sub_id,
                         "sub_minute": sub_minute,
-                        "fouls_committed": int(all_stats.get("fouls", 0)),
-                        "fouls_received": int(all_stats.get("was_fouled", 0))
+                        "fouls_committed": safe_int(current_stats["fouls_committed"]),
+                        "fouls_received": safe_int(current_stats["fouls_received"]),
+                        "tackles": safe_int(current_stats["tackles"]),
+                        "offsides": safe_int(current_stats["offsides"]),
+                        "corners": safe_int(current_stats["corners"]),
+                        "unavailable": section == "unavailable",
+                        "unavailability_reason": p.get("unavailability", {}).get("type", None)
                     })
         if player_rows: 
             pd.DataFrame(player_rows).to_sql("player_match_details", connection, if_exists="append", index=False)
@@ -233,17 +270,22 @@ def load_match_directly(match_id, connection):
             shot_rows.append({
                 "match_id": str(match_id),
                 "player_id": str(s.get("playerId")),
-                "first_name": s.get("firstName"),
-                "last_name": s.get("lastName"),
                 "team_id": str(s.get("teamId")),
                 "minute": str(m_base) if m_added is None else f"{m_base} + {m_added}",
                 "on_target": s.get("isOnTarget") and not s.get("isBlocked"),
-                "shot_type": s.get("shotType"),
-                "situation": s.get("situation"),
-                "outcome": s.get("eventType"),
+                "shot_type": s.get("shotType", None),
+                "situation": s.get("situation", None),
+                "outcome": s.get("eventType", None),
+                "x": s.get("x", None),
+                "y": s.get("y", None),
+                "goal_cross_x": s.get("goalCrossedX", None),
+                "goal_cross_y": s.get("goalCrossedY", None),
+                "blocked_x": s.get("blockedX", None),
+                "blocked_y": s.get("blockedY",None),
+                "is_blocked": s.get("isBlocked", False),
                 "own_goal": s.get("isOwnGoal", False),
                 "assist_id": str(assist_id) if assist_id else None,
-                "inside_box": s.get("isFromInsideBox")
+                "inside_box": s.get("isFromInsideBox", False)
             })
         if shot_rows:
             pd.DataFrame(shot_rows).to_sql("shots", connection, if_exists="append", index=False)
@@ -264,8 +306,6 @@ def load_match_directly(match_id, connection):
                 card_rows.append({
                     "match_id": str(match_id),
                     "player_id": str(card.get("playerId")),
-                    "first_name": card.get("firstName"),
-                    "last_name": card.get("lastName"),
                     "team_id": h_id_card if card.get("isHome") else a_id_card,
                     "card_type":  card.get("card", None),
                     "minute": str(card.get("timeStr"))

@@ -4,20 +4,46 @@
 
 {% block head %}
     <style>
-        .pitch {
-            position: relative;
-            width: 100%;
-            max-width: 460px;
-            margin: 0 auto;
-            aspect-ratio:  9/14;
-            background-color: #1a4d2e;
-            border: 4px solid #ffffff1a;
-            border-radius: 24px;
-            overflow: hidden;
-            background-image: linear-gradient(to bottom, transparent 49.5%, #ffffff1a 50%, #ffffff1a 50.5%, transparent 51%), radial-gradient(circle at 50% 50%, transparent 14%, #ffffff1a 14.5%, #ffffff1a 15.5%, transparent 16%);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        :root {
+            --pitch-green: #1a4d2e;
+            --line-soft: rgba(255, 255, 255, 0.2); /* Líneas generales */
+            --line-bright: rgba(255, 255, 255, 0.8); /* Línea de gol resaltada */
         }
 
+        .pitch {
+            position: relative;
+            max-width: 100%;
+            width: 500px;
+            margin: 0 auto;
+            aspect-ratio: 70/100;
+            background-color: var(--pitch-green);
+            border: 2px solid var(--line-soft);
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+
+            /* --- DIBUJO DE LÍNEAS Y MEDIALUNAS --- */
+            background-image: 
+                /* 1. Línea de gol SUPERIOR resaltada (solo en el centro) */
+                linear-gradient(to right, var(--line-bright), var(--line-bright)),
+                /* 2. Línea de gol INFERIOR resaltada (solo en el centro) */
+                linear-gradient(to right, var(--line-bright), var(--line-bright)),
+                /* 3. Círculo central */
+                radial-gradient(circle at 50% 50%, transparent 14%, var(--line-soft) 14.5%, var(--line-soft) 15.5%, transparent 16%),
+                /* 4. Línea de medio campo */
+                linear-gradient(to bottom, transparent 49.5%, var(--line-soft) 50%, var(--line-soft) 50.5%, transparent 51%),
+                /* 5. Medialuna Superior */
+                radial-gradient(circle at 50% 15%, transparent 7%, var(--line-soft) 7%, var(--line-soft) 7.5%, transparent 7.5%),
+                /* 6. Medialuna Inferior */
+                radial-gradient(circle at 50% 85%, transparent 7%, var(--line-soft) 7%, var(--line-soft) 7.5%, transparent 7.5%);
+
+            /* Posicionamiento de las líneas de gol resaltadas */
+            background-size: 25% 4px, 25% 4px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+            background-position: top center, bottom center, center, center, center, center;
+            background-repeat: no-repeat;
+        }
+
+        /* ÁREAS GRANDES */
         .pitch::before,
         .pitch::after {
             content: "";
@@ -25,18 +51,33 @@
             left: 20%;
             width: 60%;
             height: 15%;
-            border: 3px solid #ffffff1a;
+            border: 2px solid var(--line-soft);
+            background-color: var(--pitch-green);
+            z-index: 1;
         }
 
-        .pitch::before {
-            top: 0;
-            border-top: 0;
+        .pitch::before { top: 0; border-top: 0; }
+        .pitch::after { bottom: 0; border-bottom: 0; }
+
+        #layer-lineup,
+        #layer-shotmap {
+            z-index: 5;
         }
 
-        .pitch::after {
-            bottom: 0;
-            border-bottom: 0;
+        /* --- REPRESENTACIÓN VISUAL DE LOS ARCOS (Porterías) --- */
+        .goal-post {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 15%; /* Debe coincidir con el resaltado de la línea de gol */
+            height: 4px;
+            background: white;
+            box-shadow: 0 0 10px white;
+            z-index: 10;
         }
+
+        .goal-post.top { top: -2px; border-radius: 0 0 4px 4px; }
+        .goal-post.bottom { bottom: -2px; border-radius: 4px 4px 0 0; }
 
         .player-dot {
             position: absolute;
@@ -123,14 +164,14 @@
 
         .player-name {
             position: absolute;
-            top: 38px;
+            top: 32px;
             left: 50%;
             transform: translateX(-50%);
             white-space: nowrap;
             background: rgba(15, 23, 42, 0.95);
             padding: 2px 6px;
             border-radius: 6px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 700;
             border: 1px solid #334155;
         }
@@ -349,7 +390,7 @@
             // Resetear el otro boton
             if (l5_active[side]) {
                 btnPart.classList.remove('bg-sky-500', 'text-white');
-                btnPart.classList.add('text-slate-400');
+                btnPart.classList.add('text-slate-400', 'bg-slate-900');
                 if (contextDiv) { contextDiv.classList.remove('hidden'); contextDiv.classList.add('flex'); }
                 if (lastMatchDiv) { lastMatchDiv.classList.add('hidden'); lastMatchDiv.classList.remove('flex'); }
             } else {
@@ -358,6 +399,7 @@
 
             btnL5.classList.toggle('bg-sky-500', l5_active[side]);
             btnL5.classList.toggle('text-white', l5_active[side]);
+            btnL5.classList.toggle('bg-slate-900', !l5_active[side]);
             btnL5.classList.toggle('text-slate-400', !l5_active[side]);
 
             refreshCurrentRanking(side, teamId);
@@ -377,9 +419,10 @@
 
             btnPart.classList.toggle('bg-sky-500', match_focus[side]);
             btnPart.classList.toggle('text-white', match_focus[side]);
+            btnPart.classList.toggle('bg-slate-900', !match_focus[side]);
 
             btnL5.classList.remove('bg-sky-500', 'text-white');
-            btnL5.classList.add('text-slate-400');
+            btnL5.classList.add('text-slate-400', 'bg-slate-900');
 
             if (match_focus[side]) {
                 if (l5Div) { l5Div.classList.add('hidden'); l5Div.classList.remove('flex'); }
@@ -434,6 +477,44 @@
             btn.classList.toggle('bg-sky-500', locks[side]); btn.classList.toggle('text-white', locks[side]);
         }
 
+        function switchPitchView(view) {
+            const lineupLayer = document.getElementById('layer-lineup');
+            const shotmapLayer = document.getElementById('layer-shotmap');
+            const btnLineup = document.getElementById('btn-view-lineup');
+            const btnShotmap = document.getElementById('btn-view-shotmap');
+            const controls = document.getElementById('pitch-controls');
+            const legend = document.getElementById('shotmap-legend');
+
+            if (view === 'lineup') {
+                lineupLayer.style.opacity = '1';
+                lineupLayer.style.pointerEvents = 'auto';
+                shotmapLayer.style.opacity = '0';
+                shotmapLayer.style.pointerEvents = 'none';
+                
+                btnLineup.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                btnLineup.classList.remove('text-slate-400', 'hover:text-white');
+                btnShotmap.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+                btnShotmap.classList.add('text-slate-400', 'hover:text-white');
+                
+                controls.style.display = 'flex';
+                legend.classList.add('hidden');
+            } else {
+                lineupLayer.style.opacity = '0';
+                lineupLayer.style.pointerEvents = 'none';
+                shotmapLayer.style.opacity = '1';
+                shotmapLayer.style.pointerEvents = 'auto';
+                
+                btnShotmap.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                btnShotmap.classList.remove('text-slate-400', 'hover:text-white');
+                btnLineup.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+                btnLineup.classList.add('text-slate-400', 'hover:text-white');
+                
+                controls.style.display = 'none';
+                legend.classList.remove('hidden');
+                legend.classList.add('flex');
+            }
+        }
+
         function renderRankingPage(side) {
             const data = rankingsData[side], page = currentPages[side], list = document.getElementById(`${side}-ranking-list`);
             const start = (page - 1) * perPage, total = Math.ceil(data.length / perPage) || 1;
@@ -469,7 +550,7 @@
                 const buttons = document.querySelectorAll(isSubBtn ? `#${side}-sub-filters button` : `.${sideCode}-rank-btn`);
 
                 buttons.forEach(b => { 
-                    if (!b.id.includes('sort-btn')) { // Don't reset sort button
+                    if (!b.id.includes('sort-btn') && !b.id.includes('l5-btn') && !b.id.includes('part-btn') ) { // Don't reset sort button
                         b.classList.remove('bg-sky-500', 'text-white'); 
                         b.classList.add('bg-slate-800', 'text-slate-400'); 
                     }
@@ -870,7 +951,7 @@
         <div class="context-item" onclick="handleCtxAction('key')" id="ctx-key-label">⭐ Marcar como Clave</div>
     </div>
 
-    <div class="max-w-[1600px] space-y-4 mx-auto">
+    <div class="max-w-[1600px] space-y-8 mx-auto">
         <!-- HEADER -->
         <header class="flex justify-between items-center"><a href="/"
                 class="bg-slate-800 px-6 py-2 rounded-xl font-bold border border-slate-700 hover:bg-slate-700 transition flex items-center gap-2"><span>←</span>
@@ -884,8 +965,8 @@
                 <div class="mb-4">
                     <h2 class="text-sky-500 font-black italic uppercase text-[12px] tracking-widest leading-tight">{{
                         match.tournament
-                        or 'LIGA PROFESIONAL' }} - FECHA {{ match.gameweek }}</h2>
-                    <p class="text-slate-300 text-[12px] font-bold uppercase tracking-tighter">{{ match.date[:16] }}</p>
+                        or 'LIGA PROFESIONAL' }} {{ "Fecha " ~ match.gameweek if match.gameweek|int < 17 else {"17":"Octavos de Final", "18":"Cuartos de Final", "19":"Semifinales", "20":"Final"}[match.gameweek|string] }}</h2>
+                    <p class="text-slate-300 text-[12px] font-bold uppercase tracking-tighter">{{ match.date[:10]}}<span class="">   {{ get_weekday(match.date) }} {{ match.date[11:16]}}</span></p>
                 </div>
                 <div class="flex justify-around items-center gap-8 mb-4 text-center">
                     <h1
@@ -911,14 +992,14 @@
                     </h1>
                 </div>
                 <div class="border-t border-slate-800 py-4 ">
-                    <span class="text-[12px] font-bold text-slate-300 uppercase">arbitro: {%if
-                        match.referee %} <a href="/referee/{{ match.referee }}" class="hover:text-sky-500">{{
+                    <span class="text-[12px] font-bold text-slate-400 uppercase">arbitro: {%if
+                        match.referee %} <a href="/referee/{{ match.referee }}" class="hover:text-sky-500 text-slate-200">{{
                             match.referee}}</a> {% else %} Por designar {% endif %}</span>
                 </div>
 
                 <!-- GOLES -->
                 {% if match_goals %}
-                <div class="grid grid-cols-[1fr_1px_1fr] gap-8 mt-0 border-t border-slate-800 justify-between">
+                <div class="grid grid-cols-[1fr_1px_1fr] gap-2 mt-0 border-t border-slate-800 justify-between">
                     <!-- GOLES LOCAL -->
                     <div class="space-y-2 p-4  text-right">
                         {% for g in match_goals if g.team_id|string == match.id_home_team|string %}
@@ -935,7 +1016,7 @@
                     </div>
                     <div class="h-full w-[0px] border-x border-slate-800"></div>
                     <!-- GOLES VISITA -->
-                    <div class="space-y-2 p-4  text-left">
+                    <div class="space-y-2 p-4 text-left">
                         {% for g in match_goals if g.team_id|string == match.id_away_team|string %}
                         <div
                             class="text-[14px] text-slate-800 grid grid-cols-[auto_auto] gap-x-2 justify-start items-center">
@@ -969,8 +1050,8 @@
             </div>
         </div>
 
-        <div class="bg-slate-800/40 p-8 md:p-4 rounded-[4rem] border border-slate-700/50 grid md:grid-cols-4 gap-10 shadow-2xl items-start">
-            <div class="space-y-4">
+        <div class="bg-slate-800/40 p-8 md:p-4 rounded-[4rem] border border-slate-700/50 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-8 shadow-2xl">
+            <div class="space-y-4 h-full">
                 <!-- BANCO LOCAL -->
                 <div class="">
                     <h4 class="text-[15px] font-black text-sky-400 uppercase italic text-center tracking-widest border-b border-sky-400/20 pb-2 mb-2">Banco Local</h4>
@@ -994,17 +1075,9 @@
                     </div>
                 </div>
                 <!-- RANKING LOCAL -->
-                <div class="space-y-3">
+                <div>
                     <h4 class="text-[14px] font-black text-sky-400 uppercase italic tracking-widest text-center border-b border-sky-400/20 pb-2 mb-2">Rankings Local</h4>
                     <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
-                        <div class="flex w-full justify-between mb-3 text-[9px]">
-                            <button onclick="toggleRankingL5('home', '{{ match.id_home_team }}')" id="h-l5-btn"
-                                class="px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-400 hover:text-white transition-all">Ultimos
-                                5 Partidos</button>
-                            <button onclick="toggleRankingMatch('home', '{{ match.id_home_team }}')" id="h-part-btn"
-                                class="px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-400 hover:text-white transition-all">{{
-                                "Partido" if match.finished else "Ultimo Partido" }}</button>
-                        </div>
                         <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px] bg-slate-800 text-slate-400 font-bold">
                             <button data-type="tiradores"
                                 onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)"
@@ -1025,6 +1098,13 @@
                         </div>
                         <div id="home-sub-filters" class="sub-menu flex gap-1 justify-center text-[11px] bg-slate-800 text-slate-400 font-bold"
                             style="display:none;">
+                            <div class="flex gap-1">
+                                <button onclick="toggleRankingL5('home', '{{ match.id_home_team }}')" id="h-l5-btn"
+                                    class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 hover:text-white transition-all">Ultimos 5 Partidos</button>
+                                <button onclick="toggleRankingMatch('home', '{{ match.id_home_team }}')" id="h-part-btn"
+                                    class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700  text-slate-400 hover:text-white transition-all">{{ "Partido" if match.finished else "Ultimo Partido" }}</button>
+                            </div>
+                            <div class="w-px h-3 bg-slate-700 mx-1 self-center"></div>
                             <button
                                 onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)"
                                 id="home-sub-all"
@@ -1055,6 +1135,7 @@
                                     onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'"
                                     class="w-6 h-6 object-contain hover:scale-110 transition-transform"
                                     title="{{ get_short_name(m.rival_name) }}"></a>
+                            <span class="text-[10px] font-black {{ 'text-emerald-500' if m.result == 'W' else 'text-red-500' if m.result == 'L' else 'text-slate-400' }}">{{ m.score }}</span>
                         </div>
                         {% endfor %}
                     </div>
@@ -1070,6 +1151,7 @@
                                     onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'"
                                     class="w-6 h-6 object-contain hover:scale-110 transition-transform"
                                     title="{{ get_short_name(last_match_home.rival_name) }}"></a>
+                            <span class="text-[10px] font-black {{ 'text-emerald-500' if last_match_home.result == 'W' else 'text-red-500' if last_match_home.result == 'L' else 'text-slate-400' }}">{{ last_match_home.score }}</span>
                         </div>
                         {% endif %}
                     </div>
@@ -1091,29 +1173,148 @@
                 </div>
             </div>
             <!-- PITCH -->
-            <div class="md:col-span-2 relative flex flex-col items-center">
-                <h4
-                    class="text-[15px] w-[80%] font-black text-slate-300 uppercase italic text-center tracking-widest border-b border-slate-300/20 pb-2 mb-2">
-                    {{ lineup_label }}</h4>
-                <div class="pitch" id="soccer-pitch">
-                    {% for p in home_lineup %}<div class="player-dot bg-blue-500 draggable shadow-lg"
-                        style="bottom:{{ (p.role_x * 50) }}%; left:{{(1-p.role_y)*100}}%;" data-pid="{{p.player_id}}"
-                        data-pname="{{p.player_name}}" data-side="home" data-teamid="{{match.id_home_team}}"
-                        onclick="handlePlayerClick(event)">{{ p.shirt_number or p.position }}{% if p.card %}<div
-                            class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name flex items-center gap-1">
-                            {% if p.has_note %}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"></path><path d="M15 3v6h6"></path></svg>{% endif %}
-                            {{p.player_name}}</div>
-                    </div>{% endfor %}
-                    {% for p in away_lineup %}<div class="player-dot bg-red-500 draggable shadow-lg"
-                        style="top:{{ (p.role_x * 50) }}%; left:{{p.role_y*100}}%;" data-pid="{{p.player_id}}"
-                        data-pname="{{p.player_name}}" data-side="away" data-teamid="{{match.id_away_team}}"
-                        onclick="handlePlayerClick(event)">{{ p.shirt_number or p.position }}{% if p.card %}<div
-                            class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name flex items-center gap-1">
-                            {% if p.has_note %}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"></path><path d="M15 3v6h6"></path></svg>{% endif %}
-                            {{p.player_name}}</div>
-                    </div>{% endfor %}
+            <div class="relative flex flex-col items-center">
+                <!-- TABS -->
+                <div class="flex bg-slate-900/50 p-1 rounded-xl border border-slate-700 mb-4">
+                    <button onclick="switchPitchView('lineup')" id="btn-view-lineup" class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all bg-sky-500 text-white shadow-lg">Alineacion</button>
+                    <button onclick="switchPitchView('shotmap')" id="btn-view-shotmap" class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all text-slate-400 hover:text-white">Mapa de Tiros</button>
                 </div>
-                <div class="flex items-center gap-4 mt-4">
+
+                <div class="pitch relative" id="soccer-pitch">
+                    <div class="goal-post top"></div>
+                    <div class="goal-post bottom"></div>
+                    <!-- LINEUP LAYER -->
+                    <div id="layer-lineup" class="absolute inset-0 w-full h-full transition-opacity duration-300">
+                        {% for p in home_lineup %}<div class="player-dot bg-blue-500 draggable shadow-lg"
+                            style="bottom:{{ (p.role_y * 50) }}%; left:{{(1-p.role_x)*100}}%;" data-pid="{{p.player_id}}"
+                            data-pname="{{p.player_name}}" data-side="home" data-teamid="{{match.id_home_team}}"
+                            onclick="handlePlayerClick(event)">{{ p.shirt_number or p.position }}{% if p.card %}<div
+                                class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name flex items-center gap-1">
+                                {% if p.has_note %}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"></path><path d="M15 3v6h6"></path></svg>{% endif %}
+                                {{p.player_name}}</div>
+                        </div>{% endfor %}
+                        {% for p in away_lineup %}<div class="player-dot bg-red-500 draggable shadow-lg"
+                            style="top:{{ (p.role_y * 50) }}%; left:{{(1-p.role_x)*100}}%;" data-pid="{{p.player_id}}"
+                            data-pname="{{p.player_name}}" data-side="away" data-teamid="{{match.id_away_team}}"
+                            onclick="handlePlayerClick(event)">{{ p.shirt_number or p.position }}{% if p.card %}<div
+                                class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name flex items-center gap-1">
+                                {% if p.has_note %}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"></path><path d="M15 3v6h6"></path></svg>{% endif %}
+                                {{p.player_name}}</div>
+                        </div>{% endfor %}
+                    </div>
+
+                    <!-- SHOTMAP LAYER -->
+                    <div id="layer-shotmap" class="absolute inset-0 w-full h-full opacity-0 pointer-events-none transition-opacity duration-300">
+                        {% set xt, yt = 67, 105 %}
+                        {% set outcome_dict = {"Miss" : "Errado", "AttemptSaved" : "Bloqueado", "Atajado" : "Atajado", "Goal" : "Gol", "Post" : "Palo"}  %}
+                        {% for s in match_shots %}
+                            {% set outcome = outcome_dict.get(s.outcome, s.outcome) %}
+                            {# 1. LÓGICA DE IDENTIDAD Y COORDENADAS #}
+                            {% set is_home = s.team_id|string == match.id_home_team|string %}
+                            {# Definimos el inicio del tiro #}
+                            {% if is_home  %}
+                                {% set px = 100 - (s.x / xt * 100) %}
+                                {% set py = (s.y / yt * 100) %}
+                            {% else %}
+                                {% set px = (s.x / xt * 100) %}
+                                {% set py = 100 - (s.y / yt * 100) %}
+                            {% endif %}
+
+                            {# Definimos el fin del tiro (Si es bloqueado usa blocked_x/y, sino el arco) #}
+                            {% if s.own_goal %}{% set is_home = not is_home %}{% endif %}
+                            {% if s.is_blocked  %}
+                                {% if is_home %}
+                                    {% set cx = 100 - (s.blocked_x / xt * 100) %}
+                                    {% set cy = (s.blocked_y / yt * 100) %}
+                                {% else %}
+                                    {% set cx = (s.blocked_x / xt * 100) %}
+                                    {% set cy = 100 - (s.blocked_y / yt * 100) %}
+                                {% endif %}
+                            {% else %}
+                                {% if is_home %}
+                                    {% set cx = 100 - (s.goal_cross_x / xt * 100) %}
+                                    {% set cy = 100 %}
+                                {% else %}
+                                    {% set cx = (s.goal_cross_x / xt * 100) %}
+                                    {% set cy = 0 %}
+                                {% endif %}
+                            {% endif %}
+
+                            {# 2. LÓGICA DE COLORES Y ESTILOS #}
+                            {% set dot_color = 'bg-red-500' %}
+                            {% set line_color = 'rgba(239, 68, 68, 0.5)' %} {# Red-500 #}
+                            {% set z_idx = '100' %}
+                            {% set size_cls = 'w-2 h-2' %}
+
+                            {% if s.outcome == 'Goal' %}
+                                {% set dot_color = 'bg-yellow-400' if not s.own_goal else 'bg-red-400' %}
+                                {% set line_color = 'rgba(250, 204, 21, 0.8)' if not s.own_goal else 'rgba(239, 68, 68, 0.5)' %} {# Yellow-400 #}
+                                {% set z_idx = '300' %}
+                                {% set size_cls = 'w-4 h-4 shadow-[0_0_10px_rgba(250,204,21,0.5)]' %}
+                                {% set outcome = "Gol E/C" if s.own_goal else "Gol" %}
+                            {% elif s.on_target %}
+                                {% set dot_color = 'bg-emerald-500' %}
+                                {% set line_color = 'rgba(16, 185, 129, 0.6)' %} {# Emerald-500 #}
+                                {% set z_idx = '200' %}
+                                {% set size_cls = 'w-2.5 h-2.5' %}
+                                {% set outcome = "Atajado"%}
+                            {% elif s.is_blocked %}
+                                {% set dot_color = 'bg-slate-500' %}
+                                {% set line_color = 'rgba(148, 163, 184, 0.5)' %} {# Slate-400 #}
+                            {% endif %}
+
+                            {# 3. RENDERIZADO DE LA LÍNEA Y MARCADOR DE BLOQUEO (SVG) #}
+                            <svg class="absolute inset-0 w-full h-full pointer-events-none z-20">
+                                <line id="line-{{loop.index}}" 
+                                    class="opacity-0 transition-opacity duration-200" 
+                                    x1="{{px}}%" y1="{{100 - py}}%" 
+                                    x2="{{cx}}%" y2="{{100 - cy}}%" 
+                                    stroke="{{line_color}}" stroke-width="2" 
+                                    stroke-dasharray="{% if not s.on_target and not s.is_blocked %}4 2{% endif %}" />
+                                
+                                {% if s.is_blocked %}
+                                    {% set delta = 0.8 %}
+                                    <g id="block-{{loop.index}}" class="opacity-0  transition-opacity duration-200" stroke="rgba(148, 163, 184, 1)" stroke-width="3" stroke-linecap="round">
+                                        {# Línea 1: Diagonal descendente (\) #}
+                                        <line x1="{{cx - delta}}%" y1="{{100 - cy - delta}}%" 
+                                            x2="{{cx + delta}}%" y2="{{100 - cy + delta}}%" />
+                                        {# Línea 2: Diagonal ascendente (/) #}
+                                        <line x1="{{cx - delta}}%" y1="{{100 - cy + delta}}%" 
+                                            x2="{{cx + delta}}%" y2="{{100 - cy - delta}}%" />
+                                    </g>
+                                {% endif %}
+                            </svg>
+
+                            {# 4. RENDERIZADO DEL PUNTO DE ORIGEN (DIV) #}
+                            <div class="absolute rounded-full {{dot_color}} border border-white/80 {{size_cls}} flex items-center justify-center transform -translate-x-1/2 translate-y-1/2 group cursor-pointer hover:scale-150 transition-transform"
+                                style="bottom: {{py}}%; left: {{px}}%; z-index: {{z_idx}};"
+                                onmouseenter="
+                                this.style.zIndex = '500';
+                                document.getElementById('line-{{loop.index}}').style.opacity = '1';
+                                {% if s.is_blocked %}document.getElementById('block-{{loop.index}}').style.opacity = '1';{% endif %}" 
+                                onmouseleave="
+                                this.style.zIndex = '{{z_idx}}';
+                                document.getElementById('line-{{loop.index}}').style.opacity = '0';
+                                {% if s.is_blocked %}document.getElementById('block-{{loop.index}}').style.opacity = '0';{% endif %}">
+                                
+                                {% if s.outcome == 'Goal' %}
+                                    <span class="text-[10px] leading-none color-black text-black font-bold  select-none">G</span>
+                                {% endif %}
+
+                                <div class="absolute left-1/2 -translate-x-1/2 bg-slate-900/95 text-white text-[9px] z-50 font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-slate-700 shadow-2xl
+                                    {{ 'top-5' if is_home else 'bottom-5' }}">
+                                    {{ s.minute }}' {{s.player_name}} <span class="text-slate-400 text-[8px] font-normal">({{outcome}})</span>
+                                    
+                                    {# Opcional: Una flechita que apunte al punto #}
+                                    <div class="absolute left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 border-slate-700 rotate-45 
+                                        {{ '-top-1 border-t border-l' if is_home else '-bottom-1 border-b border-r' }}">
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 mt-4" id="pitch-controls">
                     <button id="lock-home-btn" onclick="toggleLock('home')"
                         class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">L</button>
                     <button onclick="togglePitchOrientation()"
@@ -1128,9 +1329,17 @@
                     <button id="lock-away-btn" onclick="toggleLock('away')"
                         class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">V</button>
                 </div>
+                
+                <!-- Shotmap Legend (Hidden by default) -->
+                <div id="shotmap-legend" class="hidden flex gap-4 mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-900/50 p-2 rounded-xl border border-slate-800">
+                    <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-yellow-400 border border-white"></div> Gol</div>
+                    <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-emerald-500 border border-white"></div> Al Arco</div>
+                    <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-red-500 border border-white"></div> Fuera</div>
+                    <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-slate-500 border border-slate-400"></div> Bloqueado</div>
+                </div>
             </div>
 
-            <div class="space-y-4 text-right">
+            <div class="space-y-4 h-full">
                 <!-- BANCO VISITA -->
                 <div>
                     <h4 class="text-[15px] font-black text-red-500 uppercase italic text-center tracking-widest border-b border-red-500/20 pb-2 mb-2">Banco Visita</h4>
@@ -1140,11 +1349,11 @@
                             data-pid="{{ p.player_id }}" {%if p.substitution %}data-sub-id="{{ p.substitution }}" {%
                             endif %} onmouseenter="handleSubHover(event, this)" onmouseleave="handleSubLeave(this)"
                             onclick="handlePlayerClick(event, '{{p.player_id}}')">
-                            <div class="flex justify-between items-center gap-1 w-full flex-row-reverse">
-                                <span class="font-medium truncate flex-1 text-[14px] text-slate-200 text-right"><span
-                                        class="text-slate-500  text-[11px]">({{ p.position }})</span> {{
-                                    p.player_name }} <span class="text-slate-400 ml-1">{{ p.shirt_number or '-'
-                                        }}</span></span>
+                            <div class="flex justify-between items-center gap-1 w-full">
+                                <span class="font-medium truncate flex-1 text-[14px] text-slate-200"><span
+                                        class="text-slate-400 mr-1">{{ p.shirt_number or '-'
+                                        }}</span> {{
+                                    p.player_name }} <span class="text-slate-500  text-[11px]">({{ p.position }})</span></span>
                                 {% if p.sub_minute %}<span
                                     class="text-emerald-500 font-black text-[12px] whitespace-nowrap">{{
                                     p.sub_minute}}'</span>{% endif %}
@@ -1155,16 +1364,8 @@
                 </div>
                 <!-- RANKING VISITA -->
                 <div>
-                    <h4 class="text-[14px] font-black text-red-500 uppercase italic text-center tracking-widest border-b border-red-500/20 pb-2 mb-2">Rankings Visita</h4>
+                    <h4 class="text-[14px] font-black text-red-500 uppercase italic tracking-widest text-center border-b border-red-500/20 pb-2 mb-2">Rankings Visita</h4>
                     <div class="flex flex-col items-center border-b border-red-500/20 pb-2 mb-3">
-                        <div class="flex w-full justify-between mb-3 text-[9px]">
-                            <button onclick="toggleRankingL5('away', '{{ match.id_away_team }}')" id="v-l5-btn"
-                                class="px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-400 hover:text-white transition-all">Ultimos
-                                5 Partidos</button>
-                            <button onclick="toggleRankingMatch('away', '{{ match.id_away_team }}')" id="v-part-btn"
-                                class="px-2 py-0.5 rounded-full border border-slate-700 font-black uppercase text-slate-400 hover:text-white transition-all">{{
-                                "Partido" if match.finished else "Ultimo Partido" }}</button>
-                        </div>
                         <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px] bg-slate-800 text-slate-400 font-bold">
                             <button data-type="tiradores"
                                 onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)"
@@ -1183,7 +1384,14 @@
                                 class="px-1.5 py-0.5 rounded v-rank-btn">Faltas
                                 Rec.</button>
                         </div>
-                        <div id="away-sub-filters" class="sub-menu flex gap-1 justify-center text-[12px] bg-slate-800 text-white font-bold">
+                        <div id="away-sub-filters" class="sub-menu flex gap-1 justify-start text-[12px] bg-slate-800 text-white font-bold">
+                            <div class="flex gap-1">
+                                <button onclick="toggleRankingL5('away', '{{ match.id_away_team }}')" id="v-l5-btn"
+                                    class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700  text-slate-400 hover:text-white transition-all">Ultimos 5 Partidos</button>
+                                <button onclick="toggleRankingMatch('away', '{{ match.id_away_team }}')" id="v-part-btn"
+                                    class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700  text-slate-400 hover:text-white transition-all">{{ "Partido" if match.finished else "Ultimo Partido" }}</button>
+                            </div>
+                            <div class="w-px h-3 bg-slate-700 mx-1 self-center"></div>
                             <button
                                 onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)"
                                 id="away-sub-all"
@@ -1214,6 +1422,7 @@
                                     onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'"
                                     class="w-6 h-6 object-contain hover:scale-110 transition-transform"
                                     title="{{ get_short_name(m.rival_name) }}"></a>
+                            <span class="text-[10px] font-black {{ 'text-emerald-500' if m.result == 'W' else 'text-red-500' if m.result == 'L' else 'text-slate-400' }}">{{ m.score }}</span>
                         </div>
                         {% endfor %}
                     </div>
@@ -1229,6 +1438,7 @@
                                     onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'"
                                     class="w-6 h-6 object-contain hover:scale-110 transition-transform"
                                     title="{{ get_short_name(last_match_away.rival_name) }}"></a>
+                            <span class="text-[10px] font-black {{ 'text-emerald-500' if last_match_away.result == 'W' else 'text-red-500' if last_match_away.result == 'L' else 'text-slate-400' }}">{{ last_match_away.score }}</span>
                         </div>
                         {% endif %}
                     </div>
@@ -1250,6 +1460,73 @@
                 </div>
             </div>
         </div>
+
+
+        <!-- PANEL DE ESTADISTICAS Y AUSENTES -->
+        {% if match.finished %}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- AUSENTES LOCAL -->
+            <div class="bg-slate-800/40 p-6 rounded-[2.5rem] border border-slate-700/50 shadow-xl h-full">
+                <h3 class="font-black text-sky-400 uppercase italic tracking-widest mb-4 border-b border-sky-400/20 pb-2 text-center text-sm">Ausentes Local</h3>
+                <div class="space-y-2">
+                    {% for p in unavail_home %}
+                    <div class="flex justify-between items-center bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                        <span class="font-bold text-slate-200">{{ p.name }}</span>
+                        <span class="text-[10px] font-black uppercase px-2 py-1 rounded-lg bg-slate-950 {% if p.reason != 'internationalDuty' %}text-red-500{% else %}text-blue-500{% endif %}">
+                            {{ {"injury": "lesion", "internationalDuty": "en seleccion nacional", "suspension": "Suspendido"}.get(p.reason, p.reason) }}
+                        </span>
+                    </div>
+                    {% else %}
+                    <p class="text-slate-500 text-xs italic text-center py-4">Sin bajas reportadas.</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- TABLA ESTADISTICAS -->
+            <div class="bg-slate-800/60 p-6 rounded-[2.5rem] border border-slate-700 shadow-2xl overflow-hidden h-full">
+                <h3 class="font-black text-white uppercase italic tracking-widest mb-6 text-center text-sm">Estadisticas del Encuentro</h3>
+                <table class="w-full text-sm">
+                    <tbody class="divide-y divide-slate-700/50">
+                        {% for row in [
+                            ('Tiros Totales', 'shots'),
+                            ('Tiros al Arco', 'target'),
+                            ('Desde Fuera', 'outside'),
+                            ('Cabezazos', 'headers'),
+                            ('Faltas', 'fouls'),
+                            ('Corners', 'corners'),
+                            ('Offsides', 'offsides'),
+                            ('Entradas', 'tackles'),
+                            ('Amarillas', 'yellows'),
+                            ('Rojas', 'reds')
+                        ] %}
+                        <tr class="group hover:bg-slate-700/20 transition-colors">
+                            <td class="py-3 px-2 text-left font-black text-sky-500 w-16">{{ stats.home[row[1]] }}</td>
+                            <td class="py-3 px-2 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">{{ row[0] }}</td>
+                            <td class="py-3 px-2 text-right font-black text-red-500 w-16">{{ stats.away[row[1]] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- AUSENTES VISITA -->
+            <div class="bg-slate-800/40 p-6 rounded-[2.5rem] border border-slate-700/50 shadow-xl h-full">
+                <h3 class="font-black text-red-500 uppercase italic tracking-widest mb-4 border-b border-red-500/20 pb-2 text-center text-sm">Ausentes Visita</h3>
+                <div class="space-y-2">
+                    {% for p in unavail_away %}
+                    <div class="flex justify-between items-center bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                        <span class="font-bold text-slate-200">{{ p.name }}</span>
+                        <span class="text-[10px] font-black uppercase px-2 py-1 rounded-lg bg-slate-950 {% if p.reason != 'internationalDuty' %}text-red-500{% else %}text-blue-500{% endif %}">
+                            {{ {"injury": "lesion", "internationalDuty": "en seleccion nacional", "suspension": "Suspendido"}.get(p.reason, p.reason) }}
+                        </span>
+                    </div>
+                    {% else %}
+                    <p class="text-slate-500 text-xs italic text-center py-4">Sin bajas reportadas.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
 
         <!-- PANEL DE PREDICCIONES -->

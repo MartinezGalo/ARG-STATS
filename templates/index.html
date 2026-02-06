@@ -102,18 +102,17 @@
                         class="flex flex-wrap justify-between items-center mb-8 border-b border-slate-700/50 pb-4 gap-4">
                         <div class="flex items-center gap-4">
                             <span
-                                class="bg-sky-500/10 text-sky-400 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-sky-500/20">{{
-                                m.tournament }}</span>
-                            <span class="text-[14px] font-black text-slate-300 tracking-tighter">{{ m.date[:16]
-                                }}</span>
+                                class="bg-sky-500/10 text-sky-400 px-4 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-widest border border-sky-500/20">{{
+                                m.tournament }} {{ "Fecha " ~ m.gameweek if m.gameweek|int < 17 else {"17":"Octavos de Final", "18":"Cuartos de Final", "19":"Semifinales", "20":"Final"}[m.gameweek|string] }}</span>
+                            <span class="text-[14px] font-bold text-slate-400 tracking-tighter uppercase">{{ m.date[:10]}} <span class="ml-2 text-sm font-bold text-slate-200"> {{ get_weekday(m.date) }} {{ m.date[11:16]}}</span></span></span>
                             <div class="flex items-center gap-2">
                                 <span
-                                    class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">arbitro:</span>
+                                    class="text-[13px] font-bold uppercase  text-slate-400">Arbitro:</span>
 
                                 <div class="flex items-center gap-1.5">
                                     {% if m.referee %}
                                     <a href="/referee/{{ m.referee }}"
-                                        class="text-sm font-bold text-slate-200 italic hover:text-sky-400 transition-colors">
+                                        class="text-sm font-bold text-slate-200  hover:text-sky-400 transition-colors">
                                         {{ m.referee }}
                                     </a>
                                     {% else %}
@@ -125,7 +124,7 @@
                             </div>
                         </div>
                         <span
-                            class="text-[10px] font-black uppercase tracking-widest {% if m.finished %}text-slate-500{% else %}text-emerald-400 animate-pulse{% endif %}">
+                            class="text-[13px] font-black uppercase tracking-widest {% if m.finished %}text-slate-500{% else %}text-emerald-400 animate-pulse{% endif %}">
                             {% if m.finished %}FINALIZADO{% else %}PENDIENTE{% endif %}
                         </span>
                     </div>

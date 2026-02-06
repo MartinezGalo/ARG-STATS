@@ -323,8 +323,11 @@
                 <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700/50 flex justify-between items-center">
                     <h3 class="font-black text-sky-400 uppercase text-[15px] tracking-widest">${title}</h3>
                     <div class="flex gap-2">
-                        <button onclick="toggleSort('${id}')" class="text-[11px] font-black uppercase px-3 py-1 rounded-full border ${s.sort==='avg'?'bg-sky-500 text-white border-transparent':'bg-slate-900 text-slate-500 border-slate-700'}">Promedio</button>
-                        <button onclick="toggleL5('${id}')" class="text-[11px] font-black uppercase px-3 py-1 rounded-full border ${s.l5?'bg-sky-500 text-white border-transparent':'bg-slate-900 text-slate-500 border-slate-700'}">Ultimos 5</button>
+                        <button onclick="toggleSort('${id}')" class="px-3 py-1 rounded bg-slate-900 text-slate-400 flex items-center gap-1 border border-slate-700 text-[11px] font-black uppercase transition-all hover:text-white">
+                            <span>${s.sort==='total'?'Total':'Prom.'}</span>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <button onclick="toggleL5('${id}')" class="text-[11px] font-black uppercase px-3 py-1 rounded-full border ${s.l5?'bg-sky-500 text-white border-transparent':'bg-slate-900 text-slate-400 border-slate-700'}">Ultimos 5</button>
                     </div>
                 </div>
                 <div class="py-2 flex-1 space-y-0">

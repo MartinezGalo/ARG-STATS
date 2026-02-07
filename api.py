@@ -7,16 +7,6 @@ import os
 import logging
 from datetime import datetime, timedelta
 
-import undetected_chromedriver as uc
-from selenium.webdriver.chrome.options import Options
-from bs4 import BeautifulSoup
-import json
-import time
-import logging
-import os
-import pandas as pd
-from datetime import datetime, timedelta
-
 class FotMob:
     def __init__(self):
         self.scraper = cloudscraper.create_scraper()
@@ -40,7 +30,7 @@ class FotMob:
                 response = self.scraper.get(url, headers=headers, timeout=10)
                 
                 if response.status_code != 200:
-                    logging.error(f"Error en FotMob API: {response.status_code} para la URL: {url}")
+                    print(f"Error en FotMob API: {response.status_code} para la URL: {url}")
                 
                 # FotMob a veces requiere un pequeño delay para no ser baneado
                 time.sleep(1) 
@@ -51,7 +41,7 @@ class FotMob:
             
             
     def request_match_details(self, match_id):
-        """Get match details with a request.
+        """Get match deatils with a request.
 
         Args:
             match_id (str): id of a certain match, could be found in the URL
@@ -62,6 +52,7 @@ class FotMob:
         path = f'api/matchDetails?matchId={match_id}'
         response = self.fotmob_request(path)
         return response
+
 
 
 DB_NAME = "LIGA_ARG_2025.db"
@@ -136,6 +127,40 @@ def load_match_directly(match_id, connection):
 
         if not status.get("finished", False):
             logging.info(f"Partido {match_id}: Info actualizada (Pendiente).")
+
+            unavailable_players = []
+            for side in ["homeTeam", "awayTeam"]:
+                if content["lineup"]:
+                    team_data = content.get("lineup", {}).get(side, None)
+                    for p in team_data.get("unavailable", []):
+                        unavailable_players.append({
+                                "match_id": str(match_id),
+                                "player_id": p.get("id"),
+                                "team_id": str(team_data.get("id")),
+                                "first_name": p.get("firstName"),
+                                "last_name": p.get("lastName"),
+                                "position": None,
+                                "shirt_number": None,
+                                "rating": None,
+                                "role_x": None,
+                                "role_y": None,
+                                "is_starter": False,
+                                "minutes_played": None,
+                                "substitution": None,
+                                "sub_minute": None,
+                                "fouls_committed": None,
+                                "fouls_received": None,
+                                "tackles": None,
+                                "offsides": None,
+                                "corners": None,
+                                "unavailable": True,
+                                "unavailability_reason": p.get("unavailability", {}).get("type", None)
+                            })
+            if unavailable_players:
+                cursor.execute("DELETE FROM player_match_details WHERE match_id = ?", (str(match_id),))
+                pd.DataFrame(unavailable_players).to_sql("player_match_details", connection, if_exists="append", index=False)
+                logging.info(f"\tDetalles de {len(unavailable_players)} jugadores no disponibles cargados.")
+
             return
         logging.info(f"Partido {match_id}:")
 
@@ -244,6 +269,7 @@ def load_match_directly(match_id, connection):
                         "unavailability_reason": p.get("unavailability", {}).get("type", None)
                     })
         if player_rows: 
+            cursor.execute("DELETE FROM player_match_details WHERE match_id = ?", (str(match_id),))
             pd.DataFrame(player_rows).to_sql("player_match_details", connection, if_exists="append", index=False)
             logging.info(f"\tDetalles de {len(player_rows)} jugadores cargados.")
 
@@ -285,9 +311,10 @@ def load_match_directly(match_id, connection):
                 "is_blocked": s.get("isBlocked", False),
                 "own_goal": s.get("isOwnGoal", False),
                 "assist_id": str(assist_id) if assist_id else None,
-                "inside_box": s.get("isFromInsideBox", False)
+                "inside_box": s.get("isFromInsideBox")
             })
         if shot_rows:
+            cursor.execute("DELETE FROM shots WHERE match_id = ?", (str(match_id),))
             pd.DataFrame(shot_rows).to_sql("shots", connection, if_exists="append", index=False)
             logging.info(f"\tDetalles de {len(shot_rows)} tiros cargados.")
 
@@ -311,6 +338,7 @@ def load_match_directly(match_id, connection):
                     "minute": str(card.get("timeStr"))
                 })
         if card_rows: 
+            cursor.execute("DELETE FROM cards WHERE match_id = ?", (str(match_id),))
             pd.DataFrame(card_rows).to_sql("cards", connection, if_exists="append", index=False)
             logging.info(f"\tDetalles de {len(card_rows)} tarjetas cargadas.")
 

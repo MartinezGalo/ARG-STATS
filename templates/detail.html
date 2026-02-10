@@ -13,9 +13,9 @@
         .pitch {
             position: relative;
             max-width: 100%;
-            width: 500px;
+            width: 480px;
             margin: 0 auto;
-            aspect-ratio: 70/100;
+            aspect-ratio: 480 / 686;
             background-color: var(--pitch-green);
             border: 2px solid var(--line-soft);
             border-radius: 24px;
@@ -62,6 +62,10 @@
         #layer-lineup,
         #layer-shotmap {
             z-index: 5;
+        }
+
+        #heatmap-canvas {
+            z-index: 2;
         }
 
         /* --- REPRESENTACIÓN VISUAL DE LOS ARCOS (Porterías) --- */
@@ -341,6 +345,36 @@
             display: flex;
             flex-direction: column;
         }
+
+        /* ESTILOS MAPA DE CALOR */
+        .heatmap-label {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            color: #94a3b8;
+            background: rgba(15, 23, 42, 0.9);
+            padding: 6px 16px;
+            border-radius: 99px;
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .heatmap-label.bottom { margin-top: 12px; margin-bottom: 0; }
+        
+        .heatmap-legend {
+            display: none;
+            gap: 20px;
+            padding: 10px 10px;
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 16px;
+            border: 1px solid #1e293b;
+            backdrop-filter: blur(4px);
+        }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #cbd5e1; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.2); }
     </style>
 {% endblock %}
 
@@ -477,41 +511,203 @@
             btn.classList.toggle('bg-sky-500', locks[side]); btn.classList.toggle('text-white', locks[side]);
         }
 
+        let heatmapDataCache = {};
+
+        function loadHeatmap(limit, event) {
+            if(event) {
+                document.querySelectorAll('#heatmap-controls button').forEach(b => {
+                    b.classList.remove('bg-sky-600', 'text-white');
+                    b.classList.add('text-slate-400'); 
+                });
+                event.target.classList.add('bg-sky-600', 'text-white');
+                event.target.classList.remove('text-slate-400');
+            } else {
+                // Default visual state
+                document.getElementById('hm-btn-season').classList.add('bg-sky-600', 'text-white');
+                document.getElementById('hm-btn-l5').classList.remove('bg-sky-600', 'text-white');
+            }
+
+            const url = `/api/match_heatmap/{{ match.id }}${limit ? '?limit=5' : ''}`;
+            document.getElementById('hm-label-top').style.display = 'flex';
+            document.getElementById('hm-label-bottom').style.display = 'flex';
+            
+            fetch(url).then(r => r.json()).then(data => {
+                drawHeatmap(data);
+            });
+        }
+
+        function drawHeatmap(data) {
+            const canvas = document.getElementById('heatmap-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width, h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            // 1. Analisis de Volumen para ajuste Dinamico
+            const totalShots = data.home_made.length + data.away_received.length + 
+                               data.away_made.length + data.home_received.length;
+            
+            // Si hay muchos tiros (Temporada), aumentamos el Gamma para "limpiar" el mapa.
+            // Si hay pocos (L5), bajamos el Gamma para que se note algo.
+            let gamma = 1; // Base (para L5 o pocos datos)
+            if (totalShots < 50) gamma = 0.5;
+            if (totalShots < 150) gamma = 0.8; // Temporada completa: Muy estricto
+
+            // Dimensiones de la cancha en FotMob/DB
+            const gridW = 67, gridH = 105; 
+            const scaleX = w / gridW;
+            const scaleY = h / gridH;
+            
+            // Densidades: Canal 0 (Cyan), Canal 1 (Amarillo)
+            const grid = new Float32Array(gridW * gridH * 2); 
+
+            function addDensity(shots, channel, isHomeTeam) {
+                shots.forEach(s => {
+                    let gx, gy;
+                    if ((isHomeTeam && channel === 1) || (!isHomeTeam && channel === 0)) {
+                        gx = 67 - s.x; 
+                        gy = 105 - s.y ;
+                    } else {
+                        gx = s.x;
+                        gy = s.y
+                    }
+
+                    const radius = 3;
+                    for (let dy = -radius; dy <= radius; dy++) {
+                        for (let dx = -radius; dx <= radius; dx++) {
+                            const xi = Math.floor(gx + dx);
+                            const yi = Math.floor(gy + dy);
+                            if (xi >= 0 && xi < gridW && yi >= 0 && yi < gridH) {
+                                const dist = dx*dx + dy*dy;
+                                if (dist < radius*radius) {
+                                    const val = Math.exp(-dist / (radius*radius/2)); 
+                                    grid[(yi * gridW + xi) * 2 + channel] += val;
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            addDensity(data.home_made, 1, true);      
+            addDensity(data.away_received, 0, false);  
+            addDensity(data.away_made, 1, false);     
+            addDensity(data.home_received, 0, true); 
+
+            const imgData = ctx.createImageData(w, h);
+            const d = imgData.data;
+
+            let maxD = 0;
+            for(let i=0; i<grid.length; i++) maxD = Math.max(maxD, grid[i]);
+            if (maxD === 0) maxD = 1;
+
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const gx = Math.floor(x / scaleX);
+                    const gy = Math.floor(y / scaleY);
+                    
+                    if (gx >= 0 && gx < gridW && gy >= 0 && gy < gridH) {
+                        const idx = (gy * gridW + gx) * 2;
+                        
+                        // Normalizacion base (0..1)
+                        let cn = grid[idx] / maxD;
+                        let yn = grid[idx+1] / maxD;
+
+                        // APLICACION DE GAMMA (El "Filtro" de ruido)
+                        // Elevar a una potencia > 1 hace que los numeros bajos (0.2) bajen drasticamente (0.2^4 = 0.0016)
+                        // mientras que los altos (0.9) se mantienen (0.9^4 = 0.65)
+                        let c = Math.pow(cn, gamma);
+                        let yel = Math.pow(yn, gamma);
+
+                        // Boost final para que los picos se vean solidos despues de filtrar
+                        c = Math.min(1, c * 2.5);
+                        yel = Math.min(1, yel * 2.5);
+                        
+                        // Umbral minimo de renderizado
+                        if (c > 0.01 || yel > 0.01) {
+                            const pIdx = (y * w + x) * 4;
+                            
+                            // Logica Sustractiva:
+                            d[pIdx] = 255 * (1 - c);       // Rojo (quitado por Cyan)
+                            d[pIdx + 1] = 255;             // Verde (Base)
+                            d[pIdx + 2] = 255 * (1 - yel); // Azul (quitado por Amarillo)
+                            
+                            // Alpha
+                            // Usamos el valor maximo de los dos canales para definir la opacidad
+                            const maxVal = Math.max(c, yel);
+                            // Curva suave para el alpha
+                            d[pIdx + 3] = Math.min(230, maxVal * 255); 
+                        }
+                    }
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+        }
+
         function switchPitchView(view) {
             const lineupLayer = document.getElementById('layer-lineup');
             const shotmapLayer = document.getElementById('layer-shotmap');
+            const heatmapLayer = document.getElementById('heatmap-canvas');
+            const heatmapControls = document.getElementById('heatmap-controls');
+            const hmLabelTop = document.getElementById('hm-label-top');
+            const hmLabelBottom = document.getElementById('hm-label-bottom');
+            const hmLegend = document.getElementById('hm-legend');
+            
             const btnLineup = document.getElementById('btn-view-lineup');
             const btnShotmap = document.getElementById('btn-view-shotmap');
+            const btnHeatmap = document.getElementById('btn-view-heatmap');
+            
             const controls = document.getElementById('pitch-controls');
             const legend = document.getElementById('shotmap-legend');
 
+            // Reset UI
+            lineupLayer.style.opacity = '0'; lineupLayer.style.pointerEvents = 'none';
+            if(shotmapLayer) { shotmapLayer.style.opacity = '0'; shotmapLayer.style.pointerEvents = 'none'; }
+            if(heatmapLayer) { heatmapLayer.style.opacity = '0'; }
+            if(heatmapControls) heatmapControls.style.display = 'none';
+            if(hmLabelTop) hmLabelTop.style.display = 'none';
+            if(hmLabelBottom) hmLabelBottom.style.display = 'none';
+            if(hmLegend) hmLegend.style.display = 'none';
+            
+            [btnLineup, btnShotmap, btnHeatmap].forEach(b => {
+                if(b) {
+                    b.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+                    b.classList.add('text-slate-400', 'hover:text-white');
+                }
+            });
+
             if (view === 'lineup') {
-                lineupLayer.style.opacity = '1';
-                lineupLayer.style.pointerEvents = 'auto';
-                shotmapLayer.style.opacity = '0';
-                shotmapLayer.style.pointerEvents = 'none';
-                
+                lineupLayer.style.opacity = '1'; lineupLayer.style.pointerEvents = 'auto';
                 btnLineup.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
                 btnLineup.classList.remove('text-slate-400', 'hover:text-white');
-                btnShotmap.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
-                btnShotmap.classList.add('text-slate-400', 'hover:text-white');
+                if(controls) controls.style.display = 'flex';
+                if(legend) legend.classList.add('hidden');
+            } else if (view === 'shotmap') {
+                if(shotmapLayer) { shotmapLayer.style.opacity = '1'; shotmapLayer.style.pointerEvents = 'auto'; }
+                if(btnShotmap) {
+                    btnShotmap.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                    btnShotmap.classList.remove('text-slate-400', 'hover:text-white');
+                    document.getElementById('hm-label-top').style.display = 'flex';
+                    document.getElementById('hm-label-bottom').style.display = 'flex';
+
+                }
+                if(controls) controls.style.display = 'none';
+                if(legend) { legend.classList.remove('hidden'); legend.classList.add('flex'); }
+            } else if (view === 'heatmap') {
+                if(heatmapLayer) { heatmapLayer.style.opacity = '1'; }
+                if(btnHeatmap) {
+                    btnHeatmap.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+                    btnHeatmap.classList.remove('text-slate-400', 'hover:text-white');
+                }
+                if(heatmapControls) heatmapControls.style.display = 'flex';
+                if(hmLabelTop) hmLabelTop.style.display = 'flex';
+                if(hmLabelBottom) hmLabelBottom.style.display = 'flex';
+                if(hmLegend) hmLegend.style.display = 'flex';
+                if(controls) controls.style.display = 'none';
+                if(legend) legend.classList.add('hidden');
                 
-                controls.style.display = 'flex';
-                legend.classList.add('hidden');
-            } else {
-                lineupLayer.style.opacity = '0';
-                lineupLayer.style.pointerEvents = 'none';
-                shotmapLayer.style.opacity = '1';
-                shotmapLayer.style.pointerEvents = 'auto';
-                
-                btnShotmap.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
-                btnShotmap.classList.remove('text-slate-400', 'hover:text-white');
-                btnLineup.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
-                btnLineup.classList.add('text-slate-400', 'hover:text-white');
-                
-                controls.style.display = 'none';
-                legend.classList.remove('hidden');
-                legend.classList.add('flex');
+                // Trigger load if empty
+                loadHeatmap(false);
             }
         }
 
@@ -519,20 +715,26 @@
             const data = rankingsData[side], page = currentPages[side], list = document.getElementById(`${side}-ranking-list`);
             const start = (page - 1) * perPage, total = Math.ceil(data.length / perPage) || 1;
             document.getElementById(`${side}-page-info`).innerText = `${page} / ${total}`;
-            list.innerHTML = data.slice(start, start + perPage).map(r => `
+            list.innerHTML = data.slice(start, start + perPage).map(r => {
+                const unavailHtml = r.unavail_reason ? `<span class="ml-2 text-[10px] font-black uppercase px-2 py-1 rounded-lg bg-slate-900 ${ r.unavail_reason != 'internationalDuty' ? 'text-red-500' : 'text-blue-500'}">${ {"injury": "Lesionado", "internationalDuty": "Con seleccion", "suspension":"Suspendido"}[r.unavail_reason] || r.unavail_reason }</span>` : '';
+                const colorClass = r.is_transferred ? 'text-red-500' : 'text-slate-200';
+                return `
                 <div class="player-card ${r.is_transferred ? 'border-red-500/50' : ''}" data-pid="${r.player_id}" 
                      onmouseenter="highlightTarget('${r.player_id}', true)" 
                      onmouseleave="highlightTarget('${r.player_id}', false)"
                      onclick="handlePlayerClick(event, '${r.player_id}')">
                     <div class="flex justify-between items-center gap-2">
-                        <span class="font-bold truncate text-[14px] ${r.is_transferred ? 'text-red-400' : 'text-slate-200'}">
-                            <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-500'} mr-1">#${r.number || '-'} </span>${r.name}<span class="${r.is_transferred ? 'text-red-400' : 'text-slate-500'} font-bold text-[11px]"> (${r.pos})</span>
+                        <span class="font-bold truncate text-[14px] ${r.is_transferred ? 'text-red-500' : 'text-slate-100'}">
+                            <span class="${r.is_transferred ? 'text-red-500' : 'text-slate-400'} mr-1">#${r.number || '-'} </span>
+                            ${r.name}
+                            <span class="${r.is_transferred ? 'text-red-500' : 'text-slate-300'} font-bold text-[11px]"> (${r.pos}) ${unavailHtml}</span>
                         </span>
-                        <span class="text-[12px] font-bold   ${r.is_transferred ? 'text-red-400' : 'text-slate-400'} ${side === 'away' ? 'text-left' : 'text-right'}">
-                            <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[14px]">${r.val}</span> ${r.unit} en <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} text-[13px]">${r.pj}</span> PJ | <span class="${r.is_transferred ? 'text-red-400' : 'text-emerald-400'}">${r.avg}</span> / 90
+                        <span class="text-[12px] font-bold  ${colorClass} ${side === 'away' ? 'text-left' : 'text-right'}">
+                            <span class="${r.is_transferred ? 'text-red-500' : 'text-sky-400'} font-black text-[14px]">${r.val}</span> ${r.unit} en <span class="${r.is_transferred ? 'text-red-500' : 'text-sky-400'} font-black text-[13px]">${r.pj}</span> PJ | <span class="${r.is_transferred ? 'text-red-500' : 'text-emerald-400'}">${r.avg}</span> / 90
                         </span>
                     </div>
-                </div>`).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-4">Sin datos.</p>';
+                </div>`;
+            }).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-4">Sin datos.</p>';
         }
 
         function changePage(side, delta) {
@@ -585,7 +787,7 @@
                 if (separator) separator.style.display = 'none';
             }
 
-            let url = `/api/team_ranking/${teamId}?type=${rankType}&filter=${shotFilter}&order_by=${sortModes[side]}`;
+            let url = `/api/team_ranking/${teamId}?type=${rankType}&filter=${shotFilter}&order_by=${sortModes[side]}&context_match_id={{ match.id }}`;
 
             if (match_focus[side]) {
                 url += `&match_id=${side === 'home' ? homeMatchId : awayMatchId}`;
@@ -635,9 +837,9 @@
             content.innerHTML = `
                 <div class="flex justify-between items-end border-b border-slate-700 pb-2 mb-3 shrink-0">
                     <div>
-                        <h2 class="text-5xl font-black italic uppercase text-white leading-none">${d.name}</h2>
+                        <h2 class="text-5xl font-black italic uppercase text-white leading-none">#${d.number || 'S/N'} ${d.name}</h2>
                         <p class="text-sky-400 font-bold uppercase tracking-widest mt-3 text-lg">
-                            ${d.team} | ${d.pos} | <span class="text-white">#${d.number || 'S/N'}</span>
+                            ${d.team} | ${d.pos} | <span class="text-white">${d.age} años</span>
                         </p>
                         <div class="flex gap-2 mt-3 flex-wrap">
                             ${d.teams_history ? d.teams_history.map(tid => `<a href="/team/${tid}"><img src="/static/${tid}_xsmall.png" onerror="this.style.display='none'" class="w-8 h-8 object-contain bg-slate-800 rounded-lg p-1 border border-slate-700 hover:border-sky-500 transition-colors" title="Team ${tid}"></a>`).join('') : ''}
@@ -722,7 +924,7 @@
             const labels = [
                 ['Tiros Totales', 'shots'], ['Al Arco', 'target'], ['De Lejos', 'long'],
                 ['Cabezazos', 'headers'], ['Tarjetas', 'cards'], ['Faltas Cometidas', 'f_c'],
-                ['Faltas Recibidas', 'f_r'], ['Minutos', 'mins']
+                ['Faltas Recibidas', 'f_r'], ['Minutos', 'mins'], ['Partidos', 'pj']
             ];
             return labels.map(l => `
                 <div class="flex justify-between items-center p-1 rounded-lg hover:bg-slate-800/50 transition-colors">
@@ -1023,7 +1225,7 @@
                             <span class="text-sky-500 font-bold">'{{ g.minute }}</span>
                             <span class=" text-white font-medium">{{ g.scorer }}</span>
                             {% if g.assist %}
-                            <div class="text-[11px] text-slate-400 font-bold italic ml-1 col-start-2">({{ g.assist }})
+                            <div class="text-[11px] text-slate-400 text-left font-bold italic ml-1 col-start-2">({{ g.assist }})
                             </div>
                             {% endif %}
                         </div>
@@ -1175,14 +1377,32 @@
             <!-- PITCH -->
             <div class="relative flex flex-col items-center">
                 <!-- TABS -->
-                <div class="flex bg-slate-900/50 p-1 rounded-xl border border-slate-700 mb-4">
+                <div class="flex bg-slate-900/50 p-1 rounded-xl border border-slate-700 mb-2 items-center gap-2">
                     <button onclick="switchPitchView('lineup')" id="btn-view-lineup" class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all bg-sky-500 text-white shadow-lg">Alineacion</button>
+                    {% if match.finished %}
                     <button onclick="switchPitchView('shotmap')" id="btn-view-shotmap" class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all text-slate-400 hover:text-white">Mapa de Tiros</button>
+                    {% else %}
+                    <button onclick="switchPitchView('heatmap')" id="btn-view-heatmap" class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all text-slate-400 hover:text-white">Mapa de Tiros (Calor)</button>
+                    <!-- Heatmap Controls -->
+                    <div id="heatmap-controls" class="hidden flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 ml-2">
+                        <button onclick="loadHeatmap(false, event)" id="hm-btn-season" class="px-3 py-1 rounded text-[9px] font-bold uppercase bg-sky-600 text-white transition-all">Temp.</button>
+                        <button onclick="loadHeatmap(true, event)" id="hm-btn-l5" class="px-3 py-1 rounded text-[9px] font-bold uppercase text-slate-400 hover:text-white transition-all">Ultimos 5</button>
+                    </div>
+                    {% endif %}
                 </div>
 
-                <div class="pitch relative" id="soccer-pitch">
-                    <div class="goal-post top"></div>
-                    <div class="goal-post bottom"></div>
+                <div id="hm-label-top" class="heatmap-label mb-2">
+                    <img src="{{ url_for('static', filename=match.id_away_team ~ '_xsmall.png') }}" class="w-4 h-4 object-contain" onerror="this.src='/static/none.png'">
+                    <span>Arco de {{ get_short_name(match.away_team) }}</span>
+                </div>
+                <div class="relative w-full max-w-[480px] px-0">
+
+                    <canvas id="heatmap-canvas" width="480" height="686" class="absolute inset-0 w-full h-full pointer-events-none opacity-0 transition-opacity duration-500"></canvas>
+                    <div class="pitch relative" id="soccer-pitch">
+                        <div class="goal-post top"></div>
+                        <div class="goal-post bottom"></div>
+                    
+                    <!-- HEATMAP LAYER (CANVAS) -->
                     <!-- LINEUP LAYER -->
                     <div id="layer-lineup" class="absolute inset-0 w-full h-full transition-opacity duration-300">
                         {% for p in home_lineup %}<div class="player-dot bg-blue-500 draggable shadow-lg"
@@ -1194,7 +1414,7 @@
                                 {{p.player_name}}</div>
                         </div>{% endfor %}
                         {% for p in away_lineup %}<div class="player-dot bg-red-500 draggable shadow-lg"
-                            style="top:{{ (p.role_y * 50) }}%; left:{{(1-p.role_x)*100}}%;" data-pid="{{p.player_id}}"
+                            style="top:{{ (p.role_y * 50) }}%; left:{{(p.role_x)*100}}%;" data-pid="{{p.player_id}}"
                             data-pname="{{p.player_name}}" data-side="away" data-teamid="{{match.id_away_team}}"
                             onclick="handlePlayerClick(event)">{{ p.shirt_number or p.position }}{% if p.card %}<div
                                 class="card-badge card-{{p.card}}"></div>{% endif %}<div class="player-name flex items-center gap-1">
@@ -1212,30 +1432,32 @@
                             {# 1. LÓGICA DE IDENTIDAD Y COORDENADAS #}
                             {% set is_home = s.team_id|string == match.id_home_team|string %}
                             {# Definimos el inicio del tiro #}
+                            {% set px = (s.x / xt * 100) %}
+                            {% set py = (s.y / yt * 100) %}
+
+
                             {% if is_home  %}
-                                {% set px = 100 - (s.x / xt * 100) %}
-                                {% set py = (s.y / yt * 100) %}
+                                {% set px = 100 - px %}
                             {% else %}
-                                {% set px = (s.x / xt * 100) %}
-                                {% set py = 100 - (s.y / yt * 100) %}
+                                {% set py = 100 - py %}
                             {% endif %}
 
                             {# Definimos el fin del tiro (Si es bloqueado usa blocked_x/y, sino el arco) #}
                             {% if s.own_goal %}{% set is_home = not is_home %}{% endif %}
                             {% if s.is_blocked  %}
+                                {% set cx = (s.blocked_x / xt * 100) %}
+                                {% set cy = (s.blocked_y / yt * 100) %}
                                 {% if is_home %}
-                                    {% set cx = 100 - (s.blocked_x / xt * 100) %}
-                                    {% set cy = (s.blocked_y / yt * 100) %}
+                                    {% set cx = 100 - cx %}
                                 {% else %}
-                                    {% set cx = (s.blocked_x / xt * 100) %}
-                                    {% set cy = 100 - (s.blocked_y / yt * 100) %}
+                                    {% set cy = 100 - cy %}
                                 {% endif %}
                             {% else %}
+                                {% set cx = (s.goal_cross_x / xt * 100) %}
                                 {% if is_home %}
-                                    {% set cx = 100 - (s.goal_cross_x / xt * 100) %}
+                                    {% set cx = 100 - cx %}
                                     {% set cy = 100 %}
                                 {% else %}
-                                    {% set cx = (s.goal_cross_x / xt * 100) %}
                                     {% set cy = 0 %}
                                 {% endif %}
                             {% endif %}
@@ -1314,20 +1536,26 @@
                         {% endfor %}
                     </div>
                 </div>
-                <div class="flex items-center gap-4 mt-4" id="pitch-controls">
-                    <button id="lock-home-btn" onclick="toggleLock('home')"
-                        class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">L</button>
-                    <button onclick="togglePitchOrientation()"
-                        class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl transition-all flex items-center justify-center border border-slate-700 shadow-lg"><svg
-                            width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.5">
-                            <path d="m3 16 4 4 4-4" />
-                            <path d="M7 20V4" />
-                            <path d="m21 8-4-4-4 4" />
-                            <path d="M17 4v16" />
-                        </svg></button>
-                    <button id="lock-away-btn" onclick="toggleLock('away')"
-                        class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">V</button>
+                
+                    <div class="flex place-self-center gap-4 mt-3" id="pitch-controls">
+                        <button id="lock-home-btn" onclick="toggleLock('home')"
+                            class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">L</button>
+                        <button onclick="togglePitchOrientation()"
+                            class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl transition-all flex items-center justify-center border border-slate-700 shadow-lg"><svg
+                                width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5">
+                                <path d="m3 16 4 4 4-4" />
+                                <path d="M7 20V4" />
+                                <path d="m21 8-4-4-4 4" />
+                                <path d="M17 4v16" />
+                            </svg></button>
+                        <button id="lock-away-btn" onclick="toggleLock('away')"
+                            class="bg-slate-800 hover:bg-slate-700 text-white w-10 h-10 rounded-xl flex items-center justify-center border border-slate-700 shadow-lg font-black">V</button>
+                    </div>
+                </div>
+                <div id="hm-label-bottom" class="heatmap-label mt-2 mb-2">
+                    <img src="{{ url_for('static', filename=match.id_home_team ~ '_xsmall.png') }}" class="w-4 h-4 object-contain" onerror="this.src='/static/none.png'">
+                    <span>Arco de {{ get_short_name(match.home_team) }}</span>
                 </div>
                 
                 <!-- Shotmap Legend (Hidden by default) -->
@@ -1337,6 +1565,14 @@
                     <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-red-500 border border-white"></div> Fuera</div>
                     <div class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-slate-500 border border-slate-400"></div> Bloqueado</div>
                 </div>
+                <!-- Heatmap Legend -->
+                <div id="hm-legend" class="heatmap-legend mb-1">
+                    <div class="legend-item"><div class="legend-dot bg-yellow-400"></div> Disparos Realizados</div>
+                    <div class="legend-item"><div class="legend-dot bg-cyan-400"></div> Disparos Recibidos</div>
+                    <div class="legend-item"><div class="legend-dot" style="background: #00ff00;"></div> Zonas de Peligro</div>
+                </div>
+
+
             </div>
 
             <div class="space-y-4 h-full">
@@ -1464,68 +1700,68 @@
 
         <!-- PANEL DE ESTADISTICAS Y AUSENTES -->
         {% if match.finished %}
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <!-- AUSENTES LOCAL -->
-            <div class="bg-slate-800/40 p-6 rounded-[2.5rem] border border-slate-700/50 shadow-xl h-full">
-                <h3 class="font-black text-sky-400 uppercase italic tracking-widest mb-4 border-b border-sky-400/20 pb-2 text-center text-sm">Ausentes Local</h3>
-                <div class="space-y-2">
-                    {% for p in unavail_home %}
-                    <div class="flex justify-between items-center bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                        <span class="font-bold text-slate-200">{{ p.name }}</span>
-                        <span class="text-[10px] font-black uppercase px-2 py-1 rounded-lg bg-slate-950 {% if p.reason != 'internationalDuty' %}text-red-500{% else %}text-blue-500{% endif %}">
-                            {{ {"injury": "lesion", "internationalDuty": "en seleccion nacional", "suspension": "Suspendido"}.get(p.reason, p.reason) }}
-                        </span>
-                    </div>
-                    {% else %}
-                    <p class="text-slate-500 text-xs italic text-center py-4">Sin bajas reportadas.</p>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <!-- TABLA ESTADISTICAS -->
-            <div class="bg-slate-800/60 p-6 rounded-[2.5rem] border border-slate-700 shadow-2xl overflow-hidden h-full">
-                <h3 class="font-black text-white uppercase italic tracking-widest mb-6 text-center text-sm">Estadisticas del Encuentro</h3>
-                <table class="w-full text-sm">
-                    <tbody class="divide-y divide-slate-700/50">
-                        {% for row in [
-                            ('Tiros Totales', 'shots'),
-                            ('Tiros al Arco', 'target'),
-                            ('Desde Fuera', 'outside'),
-                            ('Cabezazos', 'headers'),
-                            ('Faltas', 'fouls'),
-                            ('Corners', 'corners'),
-                            ('Offsides', 'offsides'),
-                            ('Entradas', 'tackles'),
-                            ('Amarillas', 'yellows'),
-                            ('Rojas', 'reds')
-                        ] %}
-                        <tr class="group hover:bg-slate-700/20 transition-colors">
-                            <td class="py-3 px-2 text-left font-black text-sky-500 w-16">{{ stats.home[row[1]] }}</td>
-                            <td class="py-3 px-2 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">{{ row[0] }}</td>
-                            <td class="py-3 px-2 text-right font-black text-red-500 w-16">{{ stats.away[row[1]] }}</td>
-                        </tr>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- AUSENTES LOCAL -->
+                <div class="bg-slate-800/40 p-6 rounded-[2.5rem] border border-slate-700/50 shadow-xl h-full">
+                    <h3 class="font-black text-sky-400 uppercase italic tracking-widest mb-4 border-b border-sky-400/20 pb-2 text-center text-sm">Ausentes Local</h3>
+                    <div class="space-y-2">
+                        {% for p in unavail_home %}
+                        <div class="flex justify-between items-center bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                            <span class="font-bold text-slate-200 text-[14px]">{{ p.first_name }} {{ p.last_name }}</span>
+                            <span class="text-[10px] font-black uppercase px-2 py-1 rounded-lg bg-slate-950 {% if p.reason != 'internationalDuty' %}text-red-500{% else %}text-blue-500{% endif %}">
+                                {{ {"injury": "lesion", "internationalDuty": "en seleccion nacional", "suspension": "Suspendido"}.get(p.reason, p.reason) }}
+                            </span>
+                        </div>
+                        {% else %}
+                        <p class="text-slate-500 text-xs italic text-center py-4">Sin bajas reportadas.</p>
                         {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- AUSENTES VISITA -->
-            <div class="bg-slate-800/40 p-6 rounded-[2.5rem] border border-slate-700/50 shadow-xl h-full">
-                <h3 class="font-black text-red-500 uppercase italic tracking-widest mb-4 border-b border-red-500/20 pb-2 text-center text-sm">Ausentes Visita</h3>
-                <div class="space-y-2">
-                    {% for p in unavail_away %}
-                    <div class="flex justify-between items-center bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                        <span class="font-bold text-slate-200">{{ p.name }}</span>
-                        <span class="text-[10px] font-black uppercase px-2 py-1 rounded-lg bg-slate-950 {% if p.reason != 'internationalDuty' %}text-red-500{% else %}text-blue-500{% endif %}">
-                            {{ {"injury": "lesion", "internationalDuty": "en seleccion nacional", "suspension": "Suspendido"}.get(p.reason, p.reason) }}
-                        </span>
                     </div>
-                    {% else %}
-                    <p class="text-slate-500 text-xs italic text-center py-4">Sin bajas reportadas.</p>
-                    {% endfor %}
+                </div>
+
+                <!-- TABLA ESTADISTICAS -->
+                <div class="bg-slate-800/60 p-6 rounded-[2.5rem] border border-slate-700 shadow-2xl overflow-hidden h-full">
+                    <h3 class="font-black text-white uppercase italic tracking-widest mb-6 text-center text-sm">Estadisticas del Encuentro</h3>
+                    <table class="w-full text-sm">
+                        <tbody class="divide-y divide-slate-700/50">
+                            {% for row in [
+                                ('Tiros Totales', 'shots'),
+                                ('Tiros al Arco', 'target'),
+                                ('Desde Fuera', 'outside'),
+                                ('Cabezazos', 'headers'),
+                                ('Faltas', 'fouls'),
+                                ('Corners', 'corners'),
+                                ('Offsides', 'offsides'),
+                                ('Entradas', 'tackles'),
+                                ('Amarillas', 'yellows'),
+                                ('Rojas', 'reds')
+                            ] %}
+                            <tr class="group hover:bg-slate-700/20 transition-colors">
+                                <td class="py-3 px-2 text-left font-black text-sky-500 w-16">{{ stats.home[row[1]] }}</td>
+                                <td class="py-3 px-2 text-center text-[12px] font-black uppercase text-slate-400 tracking-widest">{{ row[0] }}</td>
+                                <td class="py-3 px-2 text-right font-black text-red-500 w-16">{{ stats.away[row[1]] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- AUSENTES VISITA -->
+                <div class="bg-slate-800/40 p-6 rounded-[2.5rem] border border-slate-700/50 shadow-xl h-full">
+                    <h3 class="font-black text-red-500 uppercase italic tracking-widest mb-4 border-b border-red-500/20 pb-2 text-center text-sm">Ausentes Visita</h3>
+                    <div class="space-y-2">
+                        {% for p in unavail_away %}
+                        <div class="flex justify-between items-center bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                            <span class="font-bold text-slate-200 text-[14px]">{{ p.first_name }} {{ p.last_name }}</span>
+                            <span class="text-[10px] font-black uppercase px-2 py-1 rounded-lg bg-slate-950 {% if p.reason != 'internationalDuty' %}text-red-500{% else %}text-blue-500{% endif %}">
+                                {{ {"injury": "lesion", "internationalDuty": "en seleccion nacional", "suspension": "Suspendido"}.get(p.reason, p.reason) }}
+                            </span>
+                        </div>
+                        {% else %}
+                        <p class="text-slate-500 text-xs italic text-center py-4">Sin bajas reportadas.</p>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
-        </div>
         {% endif %}
 
 

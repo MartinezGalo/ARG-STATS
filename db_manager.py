@@ -38,6 +38,7 @@ def initialize_database():
             last_name TEXT,
             position TEXT,
             shirt_number TEXT,
+            age INTEGER,
             is_starter BOOLEAN,
             minutes_played INTEGER,
             substitution TEXT,
@@ -120,8 +121,15 @@ def initialize_database():
 
     # Views creation
     cursor.execute('CREATE VIEW IF NOT EXISTS goals AS SELECT * FROM shots WHERE outcome = "Goal"')
-    cursor.execute('CREATE VIEW IF NOT EXISTS shots_on_target AS SELECT * FROM shots WHERE on_target = 1')
-
+    cursor.execute('CREATE VIEW IF NOT EXISTS shots_on_target AS SELECT * FROM shots WHERE on_target = 1 AND own_goal = 0')
+    cursor.execute('''
+        CREATE VIEW IF NOT EXISTS shots_received AS 
+        SELECT s.*, 
+               CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END as against_team_id
+        FROM shots s
+        JOIN matches m ON s.match_id = m.id
+        WHERE s.own_goal = 0
+    ''')
     # connection.commit(): Guarda permanentemente todos los cambios realizados por el cursor.
     connection.commit()
     

@@ -65,6 +65,14 @@ def init_notes_table():
     # Views creation
     conn.execute('CREATE VIEW IF NOT EXISTS goals AS SELECT * FROM shots WHERE outcome = "Goal"')
     conn.execute('CREATE VIEW IF NOT EXISTS shots_on_target AS SELECT * FROM shots WHERE on_target = 1')
+    conn.execute('''
+        CREATE VIEW IF NOT EXISTS shots_received AS 
+        SELECT s.*, 
+               CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END as against_team_id
+        FROM shots s
+        JOIN matches m ON s.match_id = m.id
+        WHERE s.own_goal = 0
+    ''')
 
     try:
         conn.execute('ALTER TABLE matches ADD COLUMN finished INTEGER DEFAULT 0')
@@ -400,13 +408,20 @@ def get_rankings_from_stats(category='shots', filter_type='all', order_by='total
     rank_against = {item['id']: i+1 for i, item in enumerate(against_list)}
     return rank_made, rank_against
 
-def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', limit=None, match_id=None, order_by='total'):
+def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', limit=None, match_id=None, order_by='total', context_match_id=None):
     """
     Ranking de jugadores individuales. 
     Si limit tiene valor (ej: 5), busca solo los ultimos N partidos finalizados del equipo.
     """
     conn = get_db_connection()
     lt_sub = "(SELECT team_id FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
+    
+    unavail_sub = "NULL"
+    query_params = []
+    if context_match_id:
+        unavail_sub = "(SELECT unavailability_reason FROM player_match_details WHERE player_id = pmd.player_id AND match_id = ? AND unavailable = 1)"
+        query_params.append(str(context_match_id))
+
     match_filter = ""
 
     if match_id:
@@ -428,14 +443,16 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
     query = f'''
         SELECT pmd.player_id, pmd.last_name as player_name, pmd.position, {val_sql} as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct,
         (SELECT shirt_number FROM player_match_details pmd3 JOIN matches m3 ON pmd3.match_id = m3.id WHERE pmd3.player_id = pmd.player_id and minutes_played  ORDER BY m3.date DESC LIMIT 1) as shirt_number,
-        SUM(pmd.minutes_played) as minutes_played
+        SUM(pmd.minutes_played) as minutes_played,
+        {unavail_sub} as unavail_reason
         FROM player_match_details pmd 
         {join_sql} 
         WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} {where_sql}
         GROUP BY pmd.player_id HAVING val > 0 ORDER BY val DESC
     '''
     
-    res = conn.execute(query, (str(team_id),)).fetchall()
+    query_params.append(str(team_id))
+    res = conn.execute(query, tuple(query_params)).fetchall()
     u_map = {"tiradores": "tiros", "shots": "tiros", "goals":"goles", "headers": "cabezazos", "yellows": "tarjetas", "cards": "tarjetas", "fouls": "faltas", "fouls_rec": "faltas rec.", "fouls_received": "recibidas", "assists": "asistencias"}
     conn.close()
     
@@ -454,7 +471,8 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
             "is_transferred": str(r["ct"]) != str(team_id),
             "number": r["shirt_number"],
             "minutes": mins,
-            "avg": avg
+            "avg": avg,
+            "unavail_reason": r["unavail_reason"]
         })
     
     if order_by == 'avg':
@@ -671,7 +689,7 @@ def index():
 
     conn.close()
     return render_template('index.html', matches=matches, years=years, current_year=year, current_tournament=tournament, current_gameweek=gameweek, current_sort=sort_by)
-
+#STATS
 @app.route('/stats')
 def stats_page():
     return render_template('stats.html', team_map=json.dumps(TEAM_NAME_MAP))
@@ -749,8 +767,8 @@ def match_detail(match_id):
             else: stats[k]["reds"] += r['tot']
 
     # Unavailable players
-    unavail_home = conn.execute('SELECT last_name as name, unavailability_reason as reason FROM player_match_details WHERE match_id=? AND team_id=? AND unavailable=1', (str(match_id), str(match['id_home_team']))).fetchall()
-    unavail_away = conn.execute('SELECT last_name as name, unavailability_reason as reason FROM player_match_details WHERE match_id=? AND team_id=? AND unavailable=1', (str(match_id), str(match['id_away_team']))).fetchall()
+    unavail_home = conn.execute('SELECT first_name ,last_name, unavailability_reason as reason FROM player_match_details WHERE match_id=? AND team_id=? AND unavailable=1', (str(match_id), str(match['id_home_team']))).fetchall()
+    unavail_away = conn.execute('SELECT first_name , last_name, unavailability_reason as reason FROM player_match_details WHERE match_id=? AND team_id=? AND unavailable=1', (str(match_id), str(match['id_away_team']))).fetchall()
 
     # H2H: Partidos previos entre estos dos equipos
     h2h_matches = conn.execute('''
@@ -903,6 +921,7 @@ def match_detail(match_id):
 def api_team_ranking(team_id):
     limit = request.args.get('limit', type=int)
     match_id = request.args.get('match_id') # Capturamos el match_id
+    context_match_id = request.args.get('context_match_id') # Nuevo
     order_by = request.args.get('order_by', 'total')
     return jsonify(get_team_rankings_logic(
         team_id, 
@@ -910,7 +929,8 @@ def api_team_ranking(team_id):
         request.args.get('filter', 'all'), 
         limit,
         match_id,
-        order_by
+        order_by,
+        context_match_id
     ))
 
 @app.route('/api/team_stats')
@@ -1073,6 +1093,7 @@ def player_info(player_id, match_id):
         "team": info["home_team"] if str(info["team_id"]) == str(info["id_home_team"]) else info["away_team"],
         "pos": "Delantero" if info["position"] == "DL" else "Mediocampista" if info["position"] == "M" else "Defensor" if info["position"] == "DF" else "Arquero" if info["position"] == "ARQ" else "Desconocido",
         "number": info["shirt_number"],
+        "age": info["age"],
         "teams_history": teams_history,
         "stats": {"partido": match_stats, "l5": l5_stats, "general": gen_stats},
         "last_5_details": l5_details,
@@ -1100,6 +1121,51 @@ def api_match_prediction(match_id):
         "cards": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'cards', referee=match['referee']),
         "fouls": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'fouls', referee=match['referee'])
     })
+
+@app.route('/api/match_heatmap/<match_id>')
+def api_match_heatmap(match_id):
+    conn = get_db_connection()
+    match = conn.execute('SELECT id_home_team, id_away_team FROM matches WHERE id = ?', (str(match_id),)).fetchone()
+    if not match: return jsonify({"error": "Match not found"}), 404
+    
+    home_id = str(match['id_home_team'])
+    away_id = str(match['id_away_team'])
+    limit = request.args.get('limit', type=int)
+
+    def get_shots(team_id, is_home , type_shot, limit_n=None):
+        # Determinamos la condicion de busqueda segun si es realizado o recibido
+        if type_shot == 'made':
+            where = f"s.team_id = {team_id}"
+        else:
+            where = f"(m.id_home_team = {team_id} OR m.id_away_team = {team_id}) AND s.team_id != {team_id}"
+        
+        limit_sql = ""
+        if limit_n:
+            sub_q = "SELECT id FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?"
+            m_rows = conn.execute(sub_q, (team_id, team_id, limit_n)).fetchall()
+            if not m_rows: return []
+            ids = ",".join([f"'{r[0]}'" for r in m_rows])
+            limit_sql = f"AND s.match_id IN ({ids})"
+        
+        # Obtenemos las coordenadas y si el que pateo era visitante en ese partido para normalizar
+        query = f"""
+            SELECT s.x as y, s.y as x, (m.id_home_team = {team_id}) as was_home
+            FROM shots s
+            JOIN matches m ON s.match_id = m.id
+            WHERE {where} {limit_sql} AND s.own_goal = 0 AND s.x IS NOT NULL AND s.y IS NOT NULL
+        """
+        
+        rows = conn.execute(query).fetchall()
+        return [{"x": r['x'], "y": r['y']} for r in rows]
+
+    data = {
+        "home_made": get_shots(home_id, is_home= True, type_shot='made', limit_n=limit),
+        "home_received": get_shots(home_id, is_home= True, type_shot='received', limit_n=limit),
+        "away_made": get_shots(away_id, is_home= False, type_shot='made', limit_n=limit),
+        "away_received": get_shots(away_id, is_home= False, type_shot='received', limit_n=limit)
+    }
+    conn.close()
+    return jsonify(data)
 
 @app.route('/search_players/<team_id>')
 def search_players(team_id):

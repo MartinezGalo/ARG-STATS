@@ -1,7 +1,8 @@
 import requests
 import pandas as pd
 import time
-import cloudscraper
+from bs4 import BeautifulSoup
+import json
 import sqlite3
 import os
 import logging
@@ -9,25 +10,23 @@ from datetime import datetime, timedelta
 
 class FotMob:
     def __init__(self):
-        self.scraper = cloudscraper.create_scraper()
+        self.session = requests.Session()
         self.base_url = "https://www.fotmob.com"
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
 
 
     def fotmob_request(self, path):
             """
             Realiza la peticion directamente a FotMob gestionando la sesion localmente.
             """
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-            }
             path = path.lstrip('/')      
             url = f"{self.base_url}/{path}"
             
             try:
-                # Usamos el scraper en lugar de requests.get directo
-                response = self.scraper.get(url, headers=headers, timeout=10)
+                response = self.session.get(url, headers=self.headers, timeout=10)
                 
                 if response.status_code != 200:
                     print(f"Error en FotMob API: {response.status_code} para la URL: {url}")
@@ -41,17 +40,40 @@ class FotMob:
             
             
     def request_match_details(self, match_id):
-        """Get match deatils with a request.
+        """Get match details by scraping the match page and parsing __NEXT_DATA__.
+        This bypasses the Turnstile protection on the direct API endpoint.
 
         Args:
-            match_id (str): id of a certain match, could be found in the URL
+            match_id (str): id of a certain match
 
         Returns:
-            response: json with the response.
+            MockResponse: An object with a .json() method returning the match details.
         """
-        path = f'api/matchDetails?matchId={match_id}'
-        response = self.fotmob_request(path)
-        return response
+        url = f"{self.base_url}/match/{match_id}"
+        try:
+            response = self.session.get(url, headers=self.headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                script = soup.find('script', id='__NEXT_DATA__')
+                if script:
+                    data = json.loads(script.string)
+                    match_details = data.get('props', {}).get('pageProps', {})
+                    
+                    # Wrap in a MockResponse to maintain compatibility with .json() calls
+                    class MockResponse:
+                        def __init__(self, data):
+                            self.data = data
+                            self.status_code = 200
+                        def json(self):
+                            return self.data
+                    
+                    return MockResponse(match_details)
+            
+            print(f"Error al obtener detalles del partido {match_id}: {response.status_code}")
+            return None
+        except Exception as e:
+            print(f"Excepción al obtener detalles del partido {match_id}: {e}")
+            return None
 
 
 
@@ -94,10 +116,11 @@ def load_match_directly(match_id, connection):
     cursor = connection.cursor()
 
     try:
-        response = fm.request_match_details(match_id).json()
-        if not response: 
-            logging.warning(f"Partido {match_id}: Respuesta vacia de la API.")
+        res_obj = fm.request_match_details(match_id)
+        if not res_obj: 
+            logging.warning(f"Partido {match_id}: Respuesta vacia o error de scraping.")
             return
+        response = res_obj.json()
         
         general = response.get("general", {})
         header = response.get("header", {})
@@ -364,22 +387,41 @@ def get_automated_updates():
 
     try:
         # 1. Obtener la gameweek del ultimo partido finalizado
-        last_gw_row = conn.execute('''
-            SELECT gameweek FROM matches 
+        last_match=conn.execute('''
+            SELECT date, gameweek, tournament
+            FROM matches 
             WHERE finished = 1 
             ORDER BY date DESC LIMIT 1
         ''').fetchone()
 
-        current_gw = int(last_gw_row['gameweek']) if last_gw_row else 1
-        next_gw = current_gw + 1
-        
-        logging.info(f"--- Iniciando ciclo de actualizacion (Jornadas {current_gw} y {next_gw}) ---")
+        next_gameweek = conn.execute('''
+            SELECT date, gameweek, tournament
+            FROM matches 
+            WHERE date > ? AND gameweek != ?
+            ORDER BY date ASC LIMIT 1
+        ''', (last_match['date'], last_match['gameweek'])).fetchone()
 
-        # 2. Seleccionar partidos no finalizados
-        matches_to_update = conn.execute('''
-            SELECT id FROM matches 
-            WHERE (gameweek = ? OR gameweek = ?) AND finished = 0
-        ''', (str(current_gw), str(next_gw))).fetchall()
+        matches_to_update = conn.execute(f'''
+            SELECT id 
+            FROM matches
+            WHERE date > ? 
+            AND (tournament LIKE ? OR tournament LIKE ?)  
+            AND (gameweek = ? OR gameweek = ?)
+            ''',
+            (
+                last_match['date'],
+                f"%{last_match['tournament'].split()[2]}%",
+                f"%{next_gameweek['tournament'].split()[2]}%",
+                last_match['gameweek'],
+                next_gameweek['gameweek']
+            )
+        ).fetchall()
+        
+
+
+        
+        logging.info(f"--- Iniciando ciclo de actualizacion (Jornadas {last_match['gameweek']} y {int(next_gameweek['gameweek'])}) ---")
+
 
         match_ids = [row['id'] for row in matches_to_update]
 

@@ -25,7 +25,7 @@ jobs:
           
       - name: Instalar Librerías
         run: |
-          pip install requests pandas cloudscraper
+          pip install requests pandas beautifulsoup4
           
       - name: Ejecutar Actualización
         run: python api.py

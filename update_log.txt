@@ -2158,3 +2158,68 @@
 2026-02-21 15:30:54 - INFO - Partido 5101967: Info actualizada (Pendiente).
 2026-02-21 15:30:54 - INFO - 	Detalles de 3 jugadores no disponibles cargados.
 2026-02-21 15:30:55 - INFO - --- Fin del ciclo de actualizacion ---
+2026-02-22 15:30:12 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 6 y 7) ---
+2026-02-22 15:30:13 - INFO - Partido 5101954: Info actualizada (Pendiente).
+2026-02-22 15:30:13 - INFO - 	Detalles de 3 jugadores no disponibles cargados.
+2026-02-22 15:30:16 - INFO - Partido 5101966: Info actualizada (Pendiente).
+2026-02-22 15:30:16 - INFO - 	Detalles de 6 jugadores no disponibles cargados.
+2026-02-22 15:30:19 - INFO - Partido 5101962:
+2026-02-22 15:30:19 - INFO - 	Detalles de 49 jugadores cargados.
+2026-02-22 15:30:19 - INFO - 	Detalles de 35 tiros cargados.
+2026-02-22 15:30:19 - INFO - 	Detalles de 2 tarjetas cargadas.
+2026-02-22 15:30:19 - INFO - Partido 5101962: Actualizacion completa.
+2026-02-22 15:30:22 - INFO - Partido 5101955:
+2026-02-22 15:30:22 - INFO - 	Detalles de 51 jugadores cargados.
+2026-02-22 15:30:22 - INFO - 	Detalles de 27 tiros cargados.
+2026-02-22 15:30:22 - INFO - 	Detalles de 6 tarjetas cargadas.
+2026-02-22 15:30:22 - INFO - Partido 5101955: Actualizacion completa.
+2026-02-22 15:30:25 - INFO - Partido 5101964:
+2026-02-22 15:30:25 - INFO - 	Detalles de 51 jugadores cargados.
+2026-02-22 15:30:25 - INFO - 	Detalles de 19 tiros cargados.
+2026-02-22 15:30:25 - INFO - 	Detalles de 5 tarjetas cargadas.
+2026-02-22 15:30:25 - INFO - Partido 5101964: Actualizacion completa.
+2026-02-22 15:30:29 - INFO - Partido 5101959:
+2026-02-22 15:30:29 - INFO - 	Detalles de 47 jugadores cargados.
+2026-02-22 15:30:29 - INFO - 	Detalles de 16 tiros cargados.
+2026-02-22 15:30:29 - INFO - 	Detalles de 8 tarjetas cargadas.
+2026-02-22 15:30:29 - INFO - Partido 5101959: Actualizacion completa.
+2026-02-22 15:30:32 - INFO - Partido 5101957:
+2026-02-22 15:30:32 - INFO - 	Detalles de 54 jugadores cargados.
+2026-02-22 15:30:32 - INFO - 	Detalles de 30 tiros cargados.
+2026-02-22 15:30:32 - INFO - 	Detalles de 9 tarjetas cargadas.
+2026-02-22 15:30:32 - INFO - Partido 5101957: Actualizacion completa.
+2026-02-22 15:30:35 - INFO - Partido 5101968: Info actualizada (Pendiente).
+2026-02-22 15:30:35 - INFO - 	Detalles de 9 jugadores no disponibles cargados.
+2026-02-22 15:30:38 - INFO - Partido 5101967: Info actualizada (Pendiente).
+2026-02-22 15:30:38 - INFO - 	Detalles de 3 jugadores no disponibles cargados.
+2026-02-22 15:30:41 - INFO - Partido 5101978: Info actualizada (Pendiente).
+2026-02-22 15:30:41 - INFO - 	Detalles de 8 jugadores no disponibles cargados.
+2026-02-22 15:30:44 - INFO - Partido 5101981: Info actualizada (Pendiente).
+2026-02-22 15:30:44 - INFO - 	Detalles de 7 jugadores no disponibles cargados.
+2026-02-22 15:30:46 - INFO - Partido 5101972: Info actualizada (Pendiente).
+2026-02-22 15:30:46 - INFO - 	Detalles de 6 jugadores no disponibles cargados.
+2026-02-22 15:30:49 - INFO - Partido 5101971: Info actualizada (Pendiente).
+2026-02-22 15:30:49 - INFO - 	Detalles de 2 jugadores no disponibles cargados.
+2026-02-22 15:30:53 - INFO - Partido 5101975: Info actualizada (Pendiente).
+2026-02-22 15:30:53 - INFO - 	Detalles de 5 jugadores no disponibles cargados.
+2026-02-22 15:30:56 - INFO - Partido 5101970: Info actualizada (Pendiente).
+2026-02-22 15:30:56 - INFO - 	Detalles de 6 jugadores no disponibles cargados.
+2026-02-22 15:30:58 - INFO - Partido 5101974: Info actualizada (Pendiente).
+2026-02-22 15:30:58 - INFO - 	Detalles de 10 jugadores no disponibles cargados.
+2026-02-22 15:31:01 - INFO - Partido 5101969: Info actualizada (Pendiente).
+2026-02-22 15:31:01 - INFO - 	Detalles de 3 jugadores no disponibles cargados.
+2026-02-22 15:31:04 - INFO - Partido 5101977: Info actualizada (Pendiente).
+2026-02-22 15:31:04 - INFO - 	Detalles de 4 jugadores no disponibles cargados.
+2026-02-22 15:31:07 - INFO - Partido 5101983: Info actualizada (Pendiente).
+2026-02-22 15:31:07 - INFO - 	Detalles de 2 jugadores no disponibles cargados.
+2026-02-22 15:31:10 - INFO - Partido 5101979: Info actualizada (Pendiente).
+2026-02-22 15:31:10 - INFO - 	Detalles de 1 jugadores no disponibles cargados.
+2026-02-22 15:31:13 - INFO - Partido 5101982: Info actualizada (Pendiente).
+2026-02-22 15:31:13 - INFO - 	Detalles de 5 jugadores no disponibles cargados.
+2026-02-22 15:31:16 - INFO - Partido 5101973: Info actualizada (Pendiente).
+2026-02-22 15:31:16 - INFO - 	Detalles de 5 jugadores no disponibles cargados.
+2026-02-22 15:31:19 - INFO - Partido 5101980: Info actualizada (Pendiente).
+2026-02-22 15:31:19 - INFO - 	Detalles de 10 jugadores no disponibles cargados.
+2026-02-22 15:31:21 - INFO - Partido 5101976: Info actualizada (Pendiente).
+2026-02-22 15:31:21 - INFO - 	Detalles de 8 jugadores no disponibles cargados.
+2026-02-22 15:31:23 - INFO - --- Fin del ciclo de actualizacion ---

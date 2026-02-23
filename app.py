@@ -417,63 +417,133 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
     lt_sub = "(SELECT team_id FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
     
     unavail_sub = "NULL"
-    query_params = []
+    unavail_param = None
     if context_match_id:
         unavail_sub = "(SELECT unavailability_reason FROM player_match_details WHERE player_id = pmd.player_id AND match_id = ? AND unavailable = 1)"
-        query_params.append(str(context_match_id))
+        unavail_param = str(context_match_id)
 
     match_filter = ""
-
+    # Determine if we need granular history (breakdown per match)
+    include_history = False
+    
     if match_id:
         match_filter = f"AND pmd.match_id = '{match_id}'"
+        include_history = True
     elif limit:
         match_rows = conn.execute("SELECT id FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?", (str(team_id), str(team_id), limit)).fetchall()
         if match_rows:
             ids_str = ",".join([f"'{mid}'" for mid in [r[0] for r in match_rows]])
             match_filter = f"AND pmd.match_id IN ({ids_str})"
+            include_history = True
         else: return []
 
     join_sql, val_sql, where_sql = _get_stat_sql_config(rank_type, filter_type)
     
-    # Mover condiciones del WHERE al ON del LEFT JOIN para que no filtre filas de pmd (partidos jugados)
     if where_sql:
         join_sql += f" {where_sql}"
         where_sql = ""
-    
-    query = f'''
-        SELECT pmd.player_id, pmd.last_name as player_name, pmd.position, {val_sql} as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct,
-        (SELECT shirt_number FROM player_match_details pmd3 JOIN matches m3 ON pmd3.match_id = m3.id WHERE pmd3.player_id = pmd.player_id and minutes_played  ORDER BY m3.date DESC LIMIT 1) as shirt_number,
-        SUM(pmd.minutes_played) as minutes_played,
-        {unavail_sub} as unavail_reason
-        FROM player_match_details pmd 
-        {join_sql} 
-        WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} {where_sql}
-        GROUP BY pmd.player_id HAVING val > 0 ORDER BY val DESC
-    '''
-    
-    query_params.append(str(team_id))
-    res = conn.execute(query, tuple(query_params)).fetchall()
+
     u_map = {"tiradores": "tiros", "shots": "tiros", "goals":"goles", "headers": "cabezazos", "yellows": "tarjetas", "cards": "tarjetas", "fouls": "faltas", "fouls_rec": "faltas rec.", "fouls_received": "recibidas", "assists": "asistencias"}
-    conn.close()
-    
-    output = []
-    for r in res:
-        mins = int(r["minutes_played"] or 0)
-        val = int(r["val"] or 0)
-        avg = round((val / mins) * 90, 2) if mins > 0 else 0.0
-        output.append({
-            "player_id": r["player_id"], 
-            "name": r["player_name"], 
-            "pos": r["position"], 
-            "val": val, 
-            "pj": r["pj"], 
-            "unit": u_map.get(rank_type), 
-            "is_transferred": str(r["ct"]) != str(team_id),
-            "number": r["shirt_number"],
-            "minutes": mins,
-            "avg": avg,
-            "unavail_reason": r["unavail_reason"]
-        })
+
+    if include_history:
+        # Granular Query: Group by Player AND Match
+        query = f'''
+            SELECT pmd.player_id, pmd.match_id, pmd.last_name as player_name, pmd.position, {val_sql} as val, 
+            pmd.minutes_played, {lt_sub} as ct,
+            (SELECT shirt_number FROM player_match_details pmd3 JOIN matches m3 ON pmd3.match_id = m3.id WHERE pmd3.player_id = pmd.player_id and minutes_played ORDER BY m3.date DESC LIMIT 1) as shirt_number,
+            {unavail_sub} as unavail_reason
+            FROM player_match_details pmd 
+            {join_sql} 
+            WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} {where_sql}
+            GROUP BY pmd.player_id, pmd.match_id
+        '''
+        
+        query_params = []
+        if unavail_param: query_params.append(unavail_param)
+        query_params.append(str(team_id))
+        
+        raw_res = conn.execute(query, tuple(query_params)).fetchall()
+        conn.close()
+
+        # Aggregation in Python
+        players_map = {}
+        for r in raw_res:
+            pid = r['player_id']
+            if pid not in players_map:
+                players_map[pid] = {
+                    "player_id": pid,
+                    "name": r["player_name"],
+                    "pos": r["position"],
+                    "val": 0,
+                    "pj": 0,
+                    "unit": u_map.get(rank_type),
+                    "is_transferred": str(r["ct"]) != str(team_id),
+                    "number": r["shirt_number"],
+                    "minutes": 0,
+                    "avg": 0.0,
+                    "unavail_reason": r["unavail_reason"],
+                    "history": {}
+                }
+            
+            p = players_map[pid]
+            val = int(r["val"] or 0)
+            mins = int(r["minutes_played"] or 0)
+            
+            p["val"] += val
+            p["minutes"] += mins
+            p["pj"] += 1
+            p["history"][r["match_id"]] = val
+        
+        # Filter out players with 0 total stats and calculate avg
+        output = []
+        for p in players_map.values():
+            if p["val"] > 0:
+                p["avg"] = round((p["val"] / p["minutes"]) * 90, 2) if p["minutes"] > 0 else 0.0
+                output.append(p)
+
+    else:
+        # Standard Aggregate Query (Season)
+        match_filter_sub = match_filter.replace('pmd.', 'pmd2.')
+        minutes_sub = f"(SELECT SUM(pmd2.minutes_played) FROM player_match_details pmd2 WHERE pmd2.player_id = pmd.player_id AND pmd2.team_id = ? AND pmd2.minutes_played > 0 {match_filter_sub})"
+
+        query = f'''
+            SELECT pmd.player_id, pmd.last_name as player_name, pmd.position, {val_sql} as val, COUNT(DISTINCT pmd.match_id) as pj, {lt_sub} as ct,
+            (SELECT shirt_number FROM player_match_details pmd3 JOIN matches m3 ON pmd3.match_id = m3.id WHERE pmd3.player_id = pmd.player_id and minutes_played  ORDER BY m3.date DESC LIMIT 1) as shirt_number,
+            {minutes_sub} as minutes_played,
+            {unavail_sub} as unavail_reason
+            FROM player_match_details pmd 
+            {join_sql} 
+            WHERE pmd.team_id = ? AND pmd.minutes_played > 0 {match_filter} {where_sql}
+            GROUP BY pmd.player_id HAVING val > 0 ORDER BY val DESC
+        '''
+        
+        query_params = []
+        query_params.append(str(team_id)) # For minutes_sub
+        if unavail_param: query_params.append(unavail_param)
+        query_params.append(str(team_id)) # For main WHERE
+        
+        res = conn.execute(query, tuple(query_params)).fetchall()
+        conn.close()
+        
+        output = []
+        for r in res:
+            mins = int(r["minutes_played"] or 0)
+            val = int(r["val"] or 0)
+            avg = round((val / mins) * 90, 2) if mins > 0 else 0.0
+            output.append({
+                "player_id": r["player_id"], 
+                "name": r["player_name"], 
+                "pos": r["position"], 
+                "val": val, 
+                "pj": r["pj"], 
+                "unit": u_map.get(rank_type), 
+                "is_transferred": str(r["ct"]) != str(team_id),
+                "number": r["shirt_number"],
+                "minutes": mins,
+                "avg": avg,
+                "unavail_reason": r["unavail_reason"],
+                "history": {} # Empty for season view
+            })
     
     if order_by == 'avg':
         output.sort(key=lambda x: x['avg'], reverse=True)
@@ -914,8 +984,12 @@ def match_detail(match_id):
                 "minute": s['minute']
             })
 
+    # Find Previous and Next Match
+    prev_match = conn.execute('SELECT * FROM matches WHERE date < ? OR (date = ? AND id < ?) ORDER BY date DESC, id DESC LIMIT 1', (match['date'], match['date'], str(match_id))).fetchone()
+    next_match = conn.execute('SELECT * FROM matches WHERE date > ? OR (date = ? AND id > ?) ORDER BY date ASC, id ASC LIMIT 1', (match['date'], match['date'], str(match_id))).fetchone()
+
     conn.close()
-    return render_template('detail.html', match=match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf, h2h_matches=h2h_matches, ref_history=ref_history, l5_home=l5_home, l5_away=l5_away, last_match_home=last_match_home, last_match_away=last_match_away, h_mid=h_mid, a_mid=a_mid, match_goals=match_goals, match_shots=match_shots, unavail_home=unavail_home, unavail_away=unavail_away)
+    return render_template('detail.html', match=match, prev_match=prev_match, next_match=next_match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf, h2h_matches=h2h_matches, ref_history=ref_history, l5_home=l5_home, l5_away=l5_away, last_match_home=last_match_home, last_match_away=last_match_away, h_mid=h_mid, a_mid=a_mid, match_goals=match_goals, match_shots=match_shots, unavail_home=unavail_home, unavail_away=unavail_away)
 
 @app.route('/api/team_ranking/<team_id>')
 def api_team_ranking(team_id):
@@ -1112,7 +1186,9 @@ def save_match_note(match_id):
 
 @app.route('/api/match_prediction/<match_id>')
 def api_match_prediction(match_id):
-    conn = get_db_connection(); match = conn.execute('SELECT id_home_team, id_away_team, referee FROM matches WHERE id = ?', (str(match_id),)).fetchone(); conn.close()
+    conn = get_db_connection()
+    match = conn.execute('SELECT id_home_team, id_away_team, referee FROM matches WHERE id = ?', (str(match_id),)).fetchone()
+    conn.close()
     if not match: return jsonify({"error": "N/A"}), 404
     ft = request.args.get('shot_filter', 'all')
     return jsonify({
@@ -1149,14 +1225,14 @@ def api_match_heatmap(match_id):
         
         # Obtenemos las coordenadas y si el que pateo era visitante en ese partido para normalizar
         query = f"""
-            SELECT s.x as y, s.y as x, (m.id_home_team = {team_id}) as was_home
+            SELECT s.x as y, s.y as x, (m.id_home_team = {team_id}) as was_home, inside_box
             FROM shots s
             JOIN matches m ON s.match_id = m.id
             WHERE {where} {limit_sql} AND s.own_goal = 0 AND s.x IS NOT NULL AND s.y IS NOT NULL
         """
         
         rows = conn.execute(query).fetchall()
-        return [{"x": r['x'], "y": r['y']} for r in rows]
+        return [{"x": r['x'], "y": r['y'], "inside_box": bool(r['inside_box'])} for r in rows]
 
     data = {
         "home_made": get_shots(home_id, is_home= True, type_shot='made', limit_n=limit),
@@ -1173,10 +1249,25 @@ def search_players(team_id):
     conn = get_db_connection()
     # Busca jugadores unicos por nombre que hayan jugado en ese equipo
     players = conn.execute('''
-        SELECT player_id, first_name, last_name, position, MAX(shirt_number) as shirt_number 
-        FROM player_match_details 
-        WHERE team_id = ? AND (first_name || ' ' || last_name) LIKE ? 
-        GROUP BY player_id
+        SELECT player_id, first_name, last_name, position, shirt_number
+        FROM (
+            SELECT 
+                pmd.player_id, 
+                pmd.first_name, 
+                pmd.last_name, 
+                pmd.position, 
+                pmd.shirt_number,
+                ROW_NUMBER() OVER (
+                    PARTITION BY pmd.player_id 
+                    ORDER BY m.date DESC
+                ) as rn
+            FROM player_match_details pmd
+            JOIN matches m ON pmd.match_id = m.id
+            WHERE pmd.team_id = ? 
+            AND (pmd.first_name || ' ' || pmd.last_name) LIKE ?
+            AND pmd.unavailable = 0
+        )
+        WHERE rn = 1
         LIMIT 8
     ''', (str(team_id), f'%{q}%')).fetchall()
     conn.close()

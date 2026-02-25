@@ -133,6 +133,7 @@ def load_match_directly(match_id, connection):
             "id": str(match_id),
             "date": adjust_utc_to_arg(general.get("matchTimeUTCDate")),
             "finished": status.get("finished", False),
+            "cancelled": status.get("cancelled", False),
             "tournament": str(info_box.get("Tournament", {}).get("leagueName", "")),
             "gameweek": str(convert_round_to_number(general.get("leagueRoundName"))),
             "id_home_team": str(general.get("homeTeam", {}).get("id")),
@@ -404,9 +405,9 @@ def get_automated_updates():
         matches_to_update = conn.execute(f'''
             SELECT id 
             FROM matches
-            WHERE date > ? 
+            WHERE (date > ? 
             AND (tournament LIKE ? OR tournament LIKE ?)  
-            AND (gameweek = ? OR gameweek = ?)
+            AND (gameweek = ? OR gameweek = ?)) OR cancelled = 1
             ''',
             (
                 last_match['date'],

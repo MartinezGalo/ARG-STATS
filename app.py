@@ -74,10 +74,10 @@ def init_notes_table():
         WHERE s.own_goal = 0
     ''')
 
-    try:
-        conn.execute('ALTER TABLE matches ADD COLUMN finished INTEGER DEFAULT 0')
-    except:
-        pass # La columna ya existe
+    # try:
+    #     conn.execute('ALTER TABLE matches ADD COLUMN finished INTEGER DEFAULT 0')
+    # except:
+    #     pass # La columna ya existe
     conn.commit()
     conn.close()
 
@@ -727,7 +727,7 @@ def index():
     years = [r[0] for r in conn.execute("SELECT DISTINCT strftime('%Y', date) as y FROM matches ORDER BY y DESC").fetchall()]
     year = request.args.get('year'); tournament = request.args.get('tournament'); gameweek = request.args.get('gameweek')
     if year is None or tournament is None or gameweek is None:
-        next_m = conn.execute("SELECT strftime('%Y', date) as y, tournament, gameweek FROM matches WHERE finished = 0 ORDER BY date ASC LIMIT 1").fetchone()
+        next_m = conn.execute("SELECT strftime('%Y', date) as y, tournament, gameweek FROM matches WHERE finished = 0 and cancelled = 0 ORDER BY date ASC LIMIT 1").fetchone()
         if next_m:
             year, tournament, gameweek = next_m[0], next_m[1], next_m[2]
             if "Apertura" in tournament: tournament = "Liga Profesional Apertura"

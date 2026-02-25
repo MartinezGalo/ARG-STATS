@@ -17,6 +17,7 @@ def initialize_database():
             id TEXT PRIMARY KEY,
             date TEXT,
             finished BOOLEAN,
+            cancelled BOOLEAN,
             tournament TEXT,
             gameweek TEXT,
             home_team TEXT,

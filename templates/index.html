@@ -124,8 +124,8 @@
                             </div>
                         </div>
                         <span
-                            class="text-[13px] font-black uppercase tracking-widest {% if m.finished %}text-slate-500{% else %}text-emerald-400 animate-pulse{% endif %}">
-                            {% if m.finished %}FINALIZADO{% else %}PENDIENTE{% endif %}
+                            class="text-[13px] font-black uppercase tracking-widest {% if m.finished %}text-slate-500{% elif m.cancelled %}text-red-500{% else %}text-emerald-400 animate-pulse{% endif %}">
+                            {% if m.finished %}FINALIZADO{% elif m.cancelled %}SUSPENDIDO{% else %}PENDIENTE{% endif %}
                         </span>
                     </div>
 

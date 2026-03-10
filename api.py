@@ -398,7 +398,7 @@ def get_automated_updates():
         next_gameweek = conn.execute('''
             SELECT date, gameweek, tournament
             FROM matches 
-            WHERE date > ? AND gameweek != ?
+            WHERE date > ? AND gameweek != ? AND cancelled = 0
             ORDER BY date ASC LIMIT 1
         ''', (last_match['date'], last_match['gameweek'])).fetchone()
 

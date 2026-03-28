@@ -3515,3 +3515,7 @@
 2026-03-27 15:57:31 - INFO - 	Detalles de 6 tarjetas cargadas.
 2026-03-27 15:57:31 - INFO - Partido 5101954: Actualizacion completa.
 2026-03-27 15:57:32 - INFO - --- Fin del ciclo de actualizacion ---
+2026-03-28 15:35:19 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 6 y 7) ---
+2026-03-28 15:35:20 - INFO - Partido 5101969: Info actualizada (Pendiente).
+2026-03-28 15:35:20 - INFO - 	Detalles de 7 jugadores no disponibles cargados.
+2026-03-28 15:35:22 - INFO - --- Fin del ciclo de actualizacion ---

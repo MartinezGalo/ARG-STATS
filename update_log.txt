@@ -3523,3 +3523,7 @@
 2026-03-29 15:36:34 - INFO - Partido 5101969: Info actualizada (Pendiente).
 2026-03-29 15:36:34 - INFO - 	Detalles de 7 jugadores no disponibles cargados.
 2026-03-29 15:36:36 - INFO - --- Fin del ciclo de actualizacion ---
+2026-03-30 16:08:12 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 6 y 7) ---
+2026-03-30 16:08:13 - INFO - Partido 5101969: Info actualizada (Pendiente).
+2026-03-30 16:08:13 - INFO - 	Detalles de 7 jugadores no disponibles cargados.
+2026-03-30 16:08:14 - INFO - --- Fin del ciclo de actualizacion ---

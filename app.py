@@ -81,11 +81,16 @@ def init_notes_table():
     conn.commit()
     conn.close()
 
-def get_referee_rankings(order_by='total'):
+def get_referee_rankings(order_by='total', limit=None):
     """
     Calcula la posicion de cada arbitro en un top basado en el volumen total de eventos.
     Retorna dos diccionarios: {NombreArbitro: PosicionRanking} para tarjetas y faltas.
     """
+    if limit:
+        rc_list = get_referee_stats_logic('cards', order_by, limit)
+        rf_list = get_referee_stats_logic('fouls', order_by, limit)
+        return {r['name']: i+1 for i, r in enumerate(rc_list)}, {r['name']: i+1 for i, r in enumerate(rf_list)}
+
     conn = get_db_connection()
     
     sort_col = "total" if order_by == 'total' else "avg"
@@ -397,12 +402,18 @@ def _get_stat_sql_config(rank_type, filter_type):
         val_col = "SUM(pmd.fouls_committed)"
     elif rank_type == 'fouls_rec' or rank_type == 'fouls_received':
         val_col = "SUM(pmd.fouls_received)"
+    elif rank_type == 'tackles':
+        val_col = "SUM(pmd.tackles)"
+    elif rank_type == 'offsides':
+        val_col = "SUM(pmd.offsides)"
+    elif rank_type == 'corners':
+        val_col = "SUM(pmd.corners)"
         
     return base_join, val_col, extra_where
 
-def get_rankings_from_stats(category='shots', filter_type='all', order_by='total'):
+def get_rankings_from_stats(category='shots', filter_type='all', order_by='total', limit=None):
     """Helper para el predictor: convierte las listas de stats en dicts de ranking {ID: Posicion}"""
-    made_list, against_list = get_team_stats_core(category, filter_type, order_by)
+    made_list, against_list = get_team_stats_core(category, filter_type, order_by, limit=limit)
     # enumerate genera la posicion basandose en el orden de la consulta SQL
     rank_made = {item['id']: i+1 for i, item in enumerate(made_list)}
     rank_against = {item['id']: i+1 for i, item in enumerate(against_list)}
@@ -443,7 +454,21 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
         join_sql += f" {where_sql}"
         where_sql = ""
 
-    u_map = {"tiradores": "tiros", "shots": "tiros", "goals":"goles", "headers": "cabezazos", "yellows": "tarjetas", "cards": "tarjetas", "fouls": "faltas", "fouls_rec": "faltas rec.", "fouls_received": "recibidas", "assists": "asistencias"}
+    u_map = {
+        "tiradores": "tiros", 
+        "shots": "tiros", 
+        "goals":"goles", 
+        "headers": "cabezazos", 
+        "yellows": "tarjetas", 
+        "cards": "tarjetas", 
+        "fouls": "faltas", 
+        "fouls_rec": "faltas rec.", 
+        "fouls_received": "recibidas", 
+        "assists": "asistencias",
+        "tackles": "entradas",
+        "offsides": "offsides",
+        "corners": "corners"
+    }
 
     if include_history:
         # Granular Query: Group by Player AND Match
@@ -554,20 +579,20 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
 
 
 
-def get_prediction_logic(home_id, away_id, category='shots', filter_type='all', referee=None, precalc_ranks=None):
+def get_prediction_logic(home_id, away_id, category='shots', filter_type='all', referee=None, precalc_ranks=None, limit=None):
     """
     Motor de prediccion probabilistica. 
     Cruza los rankings de ataque/defensa y aplica la rigurosidad del arbitro en Tarjetas y Faltas.
     Retorna los rankings individuales de cada parte para su visualizacion en la UI.
     """
     if precalc_ranks: m_ranks, a_ranks, ref_ranks = precalc_ranks
-    else: m_ranks, a_ranks = get_rankings_from_stats(category, filter_type, order_by= 'avg'); ref_ranks = None
+    else: m_ranks, a_ranks = get_rankings_from_stats(category, filter_type, order_by= 'avg', limit=limit); ref_ranks = None
     rm_h = m_ranks.get(str(home_id), 15); ra_h = a_ranks.get(str(home_id), 15)
     rm_v = m_ranks.get(str(away_id), 15); ra_v = a_ranks.get(str(away_id), 15)
     ref_val = None
     if referee and category in ['cards', 'fouls']:
         if not ref_ranks:
-            rc, rf = get_referee_rankings(order_by='avg')
+            rc, rf = get_referee_rankings(order_by='avg', limit=limit)
             ref_ranks = rc if category == 'cards' else rf
         ref_val = ref_ranks.get(referee, 15)
         h_s = int(((30 - rm_h) + (30 - ra_v) + (30 - ref_val)) / 87 * 100)
@@ -1191,11 +1216,14 @@ def api_match_prediction(match_id):
     conn.close()
     if not match: return jsonify({"error": "N/A"}), 404
     ft = request.args.get('shot_filter', 'all')
+    limit = request.args.get('limit', type=int)
     return jsonify({
-        "shots": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'shots', ft),
-        "headers": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'headers'),
-        "cards": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'cards', referee=match['referee']),
-        "fouls": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'fouls', referee=match['referee'])
+        "shots": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'shots', ft, limit=limit),
+        "headers": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'headers', limit=limit),
+        "cards": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'cards', referee=match['referee'], limit=limit),
+        "fouls": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'fouls', referee=match['referee'], limit=limit),
+        "tackles": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'tackles', limit=limit),
+        "corners": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'corners', limit=limit)
     })
 
 @app.route('/api/match_heatmap/<match_id>')
@@ -1247,29 +1275,32 @@ def api_match_heatmap(match_id):
 def search_players(team_id):
     q = request.args.get('q', '')
     conn = get_db_connection()
-    # Busca jugadores unicos por nombre que hayan jugado en ese equipo
+    # Busca jugadores unicos por nombre que hayan jugado en ese equipo o por numero de camiseta
     players = conn.execute('''
         SELECT player_id, first_name, last_name, position, shirt_number
         FROM (
-            SELECT 
-                pmd.player_id, 
-                pmd.first_name, 
-                pmd.last_name, 
-                pmd.position, 
+            SELECT
+                pmd.player_id,
+                pmd.first_name,
+                pmd.last_name,
+                pmd.position,
                 pmd.shirt_number,
                 ROW_NUMBER() OVER (
-                    PARTITION BY pmd.player_id 
+                    PARTITION BY pmd.player_id
                     ORDER BY m.date DESC
                 ) as rn
             FROM player_match_details pmd
             JOIN matches m ON pmd.match_id = m.id
-            WHERE pmd.team_id = ? 
-            AND (pmd.first_name || ' ' || pmd.last_name) LIKE ?
+            WHERE pmd.team_id = ?
+            AND (
+                (pmd.first_name || ' ' || pmd.last_name) LIKE ?
+                OR pmd.shirt_number = ?
+            )
             AND pmd.unavailable = 0
         )
         WHERE rn = 1
-        LIMIT 8
-    ''', (str(team_id), f'%{q}%')).fetchall()
+        LIMIT 100
+    ''', (str(team_id), f'%{q}%', q)).fetchall()
     conn.close()
     res = []
     for p in players:
@@ -1280,7 +1311,6 @@ def search_players(team_id):
         d['id'] = str(d['player_id'])
         res.append(d)
     return jsonify(res)
-
 @app.route('/team/<team_id>')
 def team_page(team_id):
     conn = get_db_connection()

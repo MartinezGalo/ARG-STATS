@@ -894,22 +894,48 @@
         });
     }
 
-    function updatePredictions(f) {
-        fetch(`/api/match_prediction/{{ match.id }}?shot_filter=${f}`).then(r => r.json()).then(d => {
-            const c = 'shots'; const sd = d[c];
-            const h = document.getElementById(`val-${c}-h`), v = document.getElementById(`val-${c}-v`), g = document.getElementById(`val-${c}-gen`);
-            if (h) { h.innerText = sd.h; h.className = `text-3xl font-black ${getScoreColorClass(sd.h)}`; }
-            if (v) { v.innerText = sd.v; v.className = `text-3xl font-black ${getScoreColorClass(sd.v)}`; }
-            if (g) { g.innerText = sd.gen; g.className = `text-5xl font-black ${getScoreColorClass(sd.gen)}`; }
+    let currentShotFilter = '{{ current_filter }}';
+    let currentPredictionLimit = null;
 
-            const rankRmh = document.getElementById(`rank-${c}-rmh`), rankRav = document.getElementById(`rank-${c}-rav`), rankRah = document.getElementById(`rank-${c}-rah`), rankRmv = document.getElementById(`rank-${c}-rmv`);
-            if (rankRmh) { rankRmh.innerText = `#${sd.rm_h}`; rankRmh.className = `font-black ${getPosColorClass(sd.rm_h)}`; }
-            if (rankRav) { rankRav.innerText = `#${sd.ra_v}`; rankRav.className = `font-black ${getPosColorClass(sd.ra_v)}`; }
-            if (rankRah) { rankRah.innerText = `#${sd.ra_h}`; rankRah.className = `font-black ${getPosColorClass(sd.ra_h)}`; }
-            if (rankRmv) { rankRmv.innerText = `#${sd.rm_v}`; rankRmv.className = `font-black ${getPosColorClass(sd.rm_v)}`; }
+    function updatePredictions(f, limit = undefined) {
+        if (f !== undefined) currentShotFilter = f;
+        if (limit !== undefined) currentPredictionLimit = limit;
+        
+        const limitParam = currentPredictionLimit ? `&limit=${currentPredictionLimit}` : '';
+        fetch(`/api/match_prediction/{{ match.id }}?shot_filter=${currentShotFilter}${limitParam}`).then(r => r.json()).then(d => {
+            ['shots', 'headers', 'cards', 'fouls'].forEach(c => {
+                const sd = d[c];
+                if (!sd) return;
+                const h = document.getElementById(`val-${c}-h`), v = document.getElementById(`val-${c}-v`), g = document.getElementById(`val-${c}-gen`);
+                if (h) { h.innerText = sd.h; h.className = `text-3xl font-black ${getScoreColorClass(sd.h)}`; }
+                if (v) { v.innerText = sd.v; v.className = `text-3xl font-black ${getScoreColorClass(sd.v)}`; }
+                if (g) { g.innerText = sd.gen; g.className = `text-5xl font-black ${getScoreColorClass(sd.gen)}`; }
 
-            document.querySelectorAll('.pred-filter-btn').forEach(b => { b.classList.remove('bg-sky-500', 'text-white'); b.classList.add('text-slate-400'); });
-            const ab = document.getElementById(`pred-filter-${f}`); if (ab) { ab.classList.add('bg-sky-500', 'text-white'); }
+                const rankRmh = document.getElementById(`rank-${c}-rmh`), rankRav = document.getElementById(`rank-${c}-rav`), rankRah = document.getElementById(`rank-${c}-rah`), rankRmv = document.getElementById(`rank-${c}-rmv`);
+                if (rankRmh) { rankRmh.innerText = `#${sd.rm_h}`; rankRmh.className = `font-black ${getPosColorClass(sd.rm_h)}`; }
+                if (rankRav) { rankRav.innerText = `#${sd.ra_v}`; rankRav.className = `font-black ${getPosColorClass(sd.ra_v)}`; }
+                if (rankRah) { rankRah.innerText = `#${sd.ra_h}`; rankRah.className = `font-black ${getPosColorClass(sd.ra_h)}`; }
+                if (rankRmv) { rankRmv.innerText = `#${sd.rm_v}`; rankRmv.className = `font-black ${getPosColorClass(sd.rm_v)}`; }
+            });
+
+            // Update shot filter buttons
+            document.querySelectorAll('.pred-filter-btn').forEach(b => { 
+                b.classList.remove('bg-sky-500', 'text-white'); 
+                b.classList.add('text-slate-400'); 
+            });
+            const ab = document.getElementById(`pred-filter-${currentShotFilter}`); 
+            if (ab) { ab.classList.add('bg-sky-500', 'text-white'); ab.classList.remove('text-slate-400'); }
+            
+            // Update limit buttons
+            document.querySelectorAll('.pred-limit-btn').forEach(b => {
+                b.classList.remove('bg-sky-600', 'text-white', 'shadow-lg');
+                b.classList.add('text-slate-400');
+            });
+            const lb = document.getElementById(currentPredictionLimit ? 'pred-limit-5' : 'pred-limit-all');
+            if (lb) { 
+                lb.classList.add('bg-sky-600', 'text-white', 'shadow-lg'); 
+                lb.classList.remove('text-slate-400'); 
+            }
         });
     }
     async function openPlayer(pid) {
@@ -1093,13 +1119,26 @@
         document.getElementById('subst-results').innerHTML = '';
     }
 
-    function searchPlayers(q) {
-        if (!q || q.length < 2) return;
-        fetch(`/search_players/${substituteTarget.dataset.teamid}?q=${q}`).then(r => r.json()).then(data => {
-            const currentPids = Array.from(document.querySelectorAll('.player-dot')).map(p => p.dataset.pid);
-            const filteredData = data.filter(p => !currentPids.includes(p.id));
-            document.getElementById('subst-results').innerHTML = filteredData.map(p => `<div onclick="applySubstitution('${p.player_id}', '${p.last_name}', '${p.number}')" class="bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-sky-500 cursor-pointer flex justify-between"><span class="font-bold text-white">${p.player_name}</span><span class="text-slate-500 font-black">${p.position}</span></div>`).join('');
+    let playersCache = {};
+    async function searchPlayers(q) {
+        const teamId = substituteTarget.dataset.teamid;
+        if (!playersCache[teamId]) {
+            const r = await fetch(`/search_players/${teamId}?q=`);
+            playersCache[teamId] = await r.json();
+        }
+        const data = playersCache[teamId];
+        const currentPids = Array.from(document.querySelectorAll('.player-dot')).map(p => p.dataset.pid);
+        
+        const normalizedQuery = q.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const filteredData = data.filter(p => {
+            if (currentPids.includes(p.id)) return false;
+            if (!q) return false;
+            const normalizedName = p.player_name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            const shirtNumber = String(p.number || "");
+            return normalizedName.includes(normalizedQuery) || shirtNumber === q;
         });
+
+        document.getElementById('subst-results').innerHTML = filteredData.slice(0, 8).map(p => `<div onclick="applySubstitution('${p.player_id}', '${p.last_name}', '${p.number}')" class="bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-sky-500 cursor-pointer flex justify-between"><span class="font-bold text-white">${p.player_name}</span><span class="text-slate-500 font-black">${p.position}</span></div>`).join('');
     }
 
     function applySubstitution(pid, name, number) {
@@ -1435,25 +1474,33 @@
                 <h4
                     class="text-[14px] font-black text-sky-400 uppercase italic tracking-widest text-center border-b border-sky-400/20 pb-2 mb-2">
                     Rankings Local</h4>
-                <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
+                <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3 w-full overflow-hidden">
                     <div
-                        class="flex flex-wrap justify-center gap-1 mb-2 text-[12px] bg-slate-800 text-slate-400 font-bold">
+                        class="flex flex-nowrap justify-start md:justify-center gap-1 mb-2 text-[11px] bg-slate-800 text-slate-400 font-bold w-full overflow-x-auto no-scrollbar py-1 px-2">
                         <button data-type="tiradores"
                             onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores', 'all', event)"
-                            class="px-1.5 py-0.5 rounded bg-sky-500 text-white h-rank-btn">Tiros</button>
+                            class="px-1.5 py-0.5 rounded bg-sky-500 text-white h-rank-btn whitespace-nowrap">Tiros</button>
                         <button data-type="headers"
                             onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'headers', 'all', event)"
-                            class="px-1.5 py-0.5 rounded h-rank-btn">Cabezazos</button>
+                            class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Cabezazos</button>
                         <button data-type="yellows"
                             onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'yellows', 'all', event)"
-                            class="px-1.5 py-0.5 rounded h-rank-btn">Tarjetas</button>
+                            class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Tarjetas</button>
                         <button data-type="fouls"
                             onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls', 'all', event)"
-                            class="px-1.5 py-0.5 rounded h-rank-btn">Faltas</button>
+                            class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Faltas</button>
+                        <button data-type="tackles"
+                            onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tackles', 'all', event)"
+                            class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Entradas</button>
+                        <button data-type="offsides"
+                            onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'offsides', 'all', event)"
+                            class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Offsides</button>
+                        <button data-type="corners"
+                            onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'corners', 'all', event)"
+                            class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Corners</button>
                         <button data-type="fouls_rec"
                             onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls_rec', 'all', event)"
-                            class="px-1.5 py-0.5 rounded h-rank-btn">Faltas
-                            Rec.</button>
+                            class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Faltas Rec.</button>
                     </div>
                     <div id="home-sub-filters"
                         class="sub-menu flex gap-1 justify-center text-[11px] bg-slate-800 text-slate-400 font-bold"
@@ -1820,25 +1867,33 @@
                 <h4
                     class="text-[14px] font-black text-red-500 uppercase italic tracking-widest text-center border-b border-red-500/20 pb-2 mb-2">
                     Rankings Visita</h4>
-                <div class="flex flex-col items-center border-b border-red-500/20 pb-2 mb-3">
+                <div class="flex flex-col items-center border-b border-red-500/20 pb-2 mb-3 w-full overflow-hidden">
                     <div
-                        class="flex flex-wrap justify-center gap-1 mb-2 text-[12px] bg-slate-800 text-slate-400 font-bold">
+                        class="flex flex-nowrap justify-start md:justify-center gap-1 mb-2 text-[11px] bg-slate-800 text-slate-400 font-bold w-full overflow-x-auto no-scrollbar py-1 px-2">
                         <button data-type="tiradores"
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'all', event)"
-                            class="px-1.5 py-0.5 rounded bg-sky-500 text-white v-rank-btn">Tiros</button>
+                            class="px-1.5 py-0.5 rounded bg-sky-500 text-white v-rank-btn whitespace-nowrap">Tiros</button>
                         <button data-type="headers"
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'headers', 'all', event)"
-                            class="px-1.5 py-0.5 rounded v-rank-btn">Cabezazos</button>
+                            class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Cabezazos</button>
                         <button data-type="yellows"
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'yellows', 'all', event)"
-                            class="px-1.5 py-0.5 rounded v-rank-btn">Tarjetas</button>
+                            class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Tarjetas</button>
                         <button data-type="fouls"
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls', 'all', event)"
-                            class="px-1.5 py-0.5 rounded v-rank-btn">Faltas</button>
+                            class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Faltas</button>
+                        <button data-type="tackles"
+                            onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tackles', 'all', event)"
+                            class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Entradas</button>
+                        <button data-type="offsides"
+                            onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'offsides', 'all', event)"
+                            class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Offsides</button>
+                        <button data-type="corners"
+                            onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'corners', 'all', event)"
+                            class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Corners</button>
                         <button data-type="fouls_rec"
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls_rec', 'all', event)"
-                            class="px-1.5 py-0.5 rounded v-rank-btn">Faltas
-                            Rec.</button>
+                            class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Faltas Rec.</button>
                     </div>
                     <div id="away-sub-filters"
                         class="sub-menu flex gap-1 justify-start text-[12px] bg-slate-800 text-white font-bold">
@@ -2008,6 +2063,13 @@
 
 
     <!-- PANEL DE PREDICCIONES -->
+    <div class="flex justify-between items-end mb-4">
+        <h2 class="text-xl font-black text-white uppercase italic tracking-tighter">Predicciones del Encuentro</h2>
+        <div class="flex bg-slate-900 rounded-xl p-1 border border-slate-800 gap-1">
+            <button onclick="updatePredictions(undefined, null)" id="pred-limit-all" class="pred-limit-btn px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg">Temporada</button>
+            <button onclick="updatePredictions(undefined, 5)" id="pred-limit-5" class="pred-limit-btn px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Ultimos 5</button>
+        </div>
+    </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="prediction-section">
         {% macro get_score_color(val) %}{% if val <= 30 %}text-red-500{% elif val <=70 %}text-blue-500{% else
             %}text-green-500{% endif %}{% endmacro %} {% macro get_pos_color(val) %}{% if val> 20 %}text-red-500{%

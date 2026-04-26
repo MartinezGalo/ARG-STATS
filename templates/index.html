@@ -27,11 +27,14 @@
                 
                 <div class="flex flex-col justify-center border-r border-slate-700/50 p-2 px-4 gap-1">
                     <label class="text-[9px] font-black uppercase text-sky-400 tracking-[0.2em] text-center mb-1">Ordenar</label>
-                    <div class="flex gap-1">
+                    <div class="flex gap-1 flex-nowrap overflow-x-auto no-scrollbar justify-start sm:justify-center w-full px-1 pb-1">
                         <button type="button" onclick="setSort('shots')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'shots' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Tiros</button>
                         <button type="button" onclick="setSort('headers')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'headers' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Cabez.</button>
                         <button type="button" onclick="setSort('fouls')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'fouls' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Faltas</button>
                         <button type="button" onclick="setSort('cards')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'cards' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Tarj.</button>
+                        <button type="button" onclick="setSort('corners')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'corners' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Corn.</button>
+                        <button type="button" onclick="setSort('tackles')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'tackles' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Entr.</button>
+                        <button type="button" onclick="setSort('offsides')" class="p-1.5 rounded-lg text-[9px] font-black uppercase transition-all {{ 'bg-sky-500 text-white' if current_sort == 'offsides' else 'bg-slate-900 text-slate-500 hover:text-white' }}">Offs.</button>
                     </div>
                 </div>
 
@@ -93,8 +96,20 @@
 
         <!-- GRILLA PARTIDOS -->
         <div class="grid grid-cols-1 gap-8">
-            {% macro score_color(val) %}{% if val <= 30 %}text-red-500{% elif val <=70 %}text-blue-500{% else
-                %}text-green-500{% endif %}{% endmacro %} {% for m in matches %} <!-- TARJETA PARTIDO -->
+            {% macro score_color(val) %}{% if val <= 30 %}text-red-500{% elif val <=70 %}text-blue-500{% else %}text-green-500{% endif %}{% endmacro %}
+            
+            {% macro pred_row(stats_list, width_class) %}
+            <div class="flex flex-wrap justify-center gap-2 sm:gap-4 mx-auto w-full px-4">
+                {% for label, val in stats_list %}
+                <div class="flex flex-col {{ width_class }}">
+                    <span class="text-[9px] font-black text-slate-500 uppercase">{{ label }}</span>
+                    <span class="text-xl font-black {{ score_color(val) }}">{{ val }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endmacro %}
+
+            {% for m in matches %} <!-- TARJETA PARTIDO -->
                 <div
                     class="bg-slate-800 p-8 rounded-[2.5rem] border border-slate-700 shadow-lg relative overflow-hidden transition-all hover:border-slate-600">
 
@@ -161,64 +176,28 @@
                             </a>
                         </div>
                         <!-- PREDICCIONES -->
-                        <div class="grid grid-cols-2 gap-4 mx-auto">
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Tiros</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.s_home) }}">{{ m.preds.s_home
-                                    }}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Cabezazos</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.h_home) }}">{{ m.preds.h_home
-                                    }}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Faltas</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.f_home) }}">{{ m.preds.f_home
-                                    }}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Tarjetas</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.c_home) }}">{{ m.preds.c_home
-                                    }}</span>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4 mx-auto">
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Tiros</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.s_gen) }}">{{ m.preds.s_gen}}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Cabezazos</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.h_gen) }}">{{ m.preds.h_gen}}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Faltas</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.f_gen) }}">{{ m.preds.f_gen}}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Tarjetas</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.c_gen) }}">{{ m.preds.c_gen}}</span>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4 mx-auto">
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Tiros</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.s_away) }}">{{ m.preds.s_away}}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Cabezazos</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.h_away) }}">{{ m.preds.h_away}}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Faltas</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.f_away) }}">{{ m.preds.f_away}}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[9px] font-black text-slate-500 uppercase">Tarjetas</span>
-                                <span class="text-xl font-black {{ score_color(m.preds.c_away) }}">{{ m.preds.c_away}}</span>
-                            </div>
-                        </div>
+                        {% set home_stats = [
+                            ('Tiros', m.preds.s_home), ('Cabezazos', m.preds.h_home), 
+                            ('Faltas', m.preds.f_home), ('Tarjetas', m.preds.c_home), 
+                            ('Corners', m.preds.cor_home), ('Entradas', m.preds.t_home), 
+                            ('Offsides', m.preds.o_home)
+                        ] %}
+                        {% set gen_stats = [
+                            ('Tiros', m.preds.s_gen), ('Cabezazos', m.preds.h_gen), 
+                            ('Faltas', m.preds.f_gen), ('Tarjetas', m.preds.c_gen), 
+                            ('Corners', m.preds.cor_gen), ('Entradas', m.preds.t_gen), 
+                            ('Offsides', m.preds.o_gen)
+                        ] %}
+                        {% set away_stats = [
+                            ('Tiros', m.preds.s_away), ('Cabezazos', m.preds.h_away), 
+                            ('Faltas', m.preds.f_away), ('Tarjetas', m.preds.c_away), 
+                            ('Corners', m.preds.cor_away), ('Entradas', m.preds.t_away), 
+                            ('Offsides', m.preds.o_away)
+                        ] %}
+
+                        {{ pred_row(home_stats, "w-[20%] min-w-[30px]") }}
+                        {{ pred_row(gen_stats, "w-[20%]  min-w-[30px]") }}
+                        {{ pred_row(away_stats, "w-[20%] min-w-[30px]") }}
 
                     </div>
                 </div>

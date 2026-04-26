@@ -45,13 +45,38 @@
                 <button onclick="setCategory('cards')" id="btn-cat-cards" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Tarjetas</button>
                 <button onclick="setCategory('fouls')" id="btn-cat-fouls" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Faltas</button>
                 <button onclick="setCategory('fouls_received')" id="btn-cat-fouls_received" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Faltas Rec.</button>
+                <button onclick="setCategory('corners')" id="btn-cat-corners" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Corners</button>
+                <button onclick="setCategory('tackles')" id="btn-cat-tackles" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Entradas</button>
+                <button onclick="setCategory('offsides')" id="btn-cat-offsides" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Offsides</button>
             </div>
 
-            <!-- 3. SUB-FILTRO (Solo Tiros) -->
-            <div id="subfilter-container" class="hidden flex gap-2 animate-fade-in-down">
-                <button onclick="setSubFilter('all')" id="btn-sub-all" class="sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all">Todos</button>
-                <button onclick="setSubFilter('target')" id="btn-sub-target" class="sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all">Al Arco</button>
-                <button onclick="setSubFilter('long')" id="btn-sub-long" class="sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all">Lejos</button>
+            <!-- 3. SUB-FILTROS Y CONTROLES GLOBALES -->
+            <div class="flex flex-wrap justify-center gap-4 items-center w-full">
+                
+                <!-- Tipo de Tiro -->
+                <div id="subfilter-container" class="hidden flex bg-slate-800 p-1 rounded-xl border border-slate-700 shadow-lg animate-fade-in-down">
+                    <button onclick="setSubFilter('all')" id="btn-sub-all" class="px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all">Todos</button>
+                    <button onclick="setSubFilter('target')" id="btn-sub-target" class="px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all">Al Arco</button>
+                    <button onclick="setSubFilter('long')" id="btn-sub-long" class="px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all">Lejos</button>
+                </div>
+
+                <!-- Venue -->
+                <div id="venue-filter-container" class="flex bg-slate-800 p-1 rounded-xl border border-slate-700 shadow-lg">
+                    <button onclick="setVenue('all')" id="btn-venue-all" class="px-6 py-1 rounded-lg text-[10px] font-black uppercase transition-all">General</button>
+                    <button onclick="setVenue('home')" id="btn-venue-home" class="px-6 py-1 rounded-lg text-[10px] font-black uppercase transition-all text-green-400">Local</button>
+                    <button onclick="setVenue('away')" id="btn-venue-away" class="px-6 py-1 rounded-lg text-[10px] font-black uppercase transition-all text-yellow-400">Visitante</button>
+                </div>
+
+                <div class="w-px h-6 bg-slate-700"></div>
+
+                <!-- Sort & L5 -->
+                <div class="flex gap-2">
+                    <button onclick="toggleSort()" id="btn-global-sort" class="px-4 py-1.5 rounded-xl bg-slate-900 text-slate-400 flex items-center gap-1 border border-slate-700 text-[10px] font-black uppercase transition-all hover:text-white shadow-lg">
+                        <span id="sort-label-text">Promedio</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <button onclick="toggleL5()" id="btn-global-l5" class="text-[10px] font-black uppercase px-4 py-1.5 rounded-xl border bg-slate-900 text-slate-400 border-slate-700 hover:text-white transition-all shadow-lg">Ultimos 5</button>
+                </div>
             </div>
         </div>
 
@@ -72,16 +97,12 @@
         mode: 'teams', // teams, players, referees
         category: 'shots', // shots, headers, cards, fouls
         subFilter: 'all', // all, target, long
+        venue: 'all', // all, home, away
+        sort: 'avg', // avg, total
+        l5: false
     };
 
-    // Estado Individual por Grid
-    const gridState = {
-        made: { sort: 'total', l5: false },
-        against: { sort: 'total', l5: false },
-        single: { sort: 'total', l5: false }
-    };
-
-    const pages = { made: 1, against: 1, single: 1 };
+    let pages = { made: 1, against: 1, single: 1 };
     const dataCache = { made: [], against: [], single: [] };
     const perPage = 10;
 
@@ -92,7 +113,10 @@
             goals: { made: 'Goles a Favor', against: 'Goles en Contra' },
             headers: { made: 'Cabezazos Realizados', against: 'Cabezazos Recibidos' },
             cards: { made: 'Tarjetas Recibidas', against: 'Tarjetas Generadas (Rival)' },
-            fouls: { made: 'Faltas Cometidas', against: 'Faltas Recibidas)' }
+            fouls: { made: 'Faltas Cometidas', against: 'Faltas Recibidas' },
+            corners: { made: 'Corners a Favor', against: 'Corners en Contra' },
+            tackles: { made: 'Entradas Realizadas', against: 'Entradas Recibidas' },
+            offsides: { made: 'Offsides Cometidos', against: 'Offsides Provocados' }
         },
         players: {
             shots: 'Rematadores',
@@ -101,7 +125,10 @@
             headers: 'Cabezazos',
             cards: 'Tarjetas Recibidas',
             fouls: 'Faltas Cometidas',
-            fouls_received: 'Faltas Recibidas'
+            fouls_received: 'Faltas Recibidas',
+            corners: 'Lanzadores de Corner',
+            tackles: 'Recuperadores (Entradas)',
+            offsides: 'Jugadores en Offside'
         },
         referees: {
             cards: 'Arbitros con mas Tarjetas',
@@ -114,37 +141,44 @@
         fetchData();
     }
 
-    function resetGridState() {
-        ['made', 'against', 'single'].forEach(k => {
-            gridState[k] = { sort: 'total', l5: false };
-        });
+    function resetGlobalState() {
+        state.sort = 'avg';
+        state.l5 = false;
+        pages = { made: 1, against: 1, single: 1 };
     }
 
     function setMode(m) { 
         state.mode = m; 
-        resetGridState(); 
+        resetGlobalState(); 
         
         if (m === 'referees') {
             state.category = 'cards';
+            document.getElementById('venue-filter-container').style.display = 'none';
+            state.venue = 'all';
         } else {
             state.category = 'shots';
             state.subFilter = 'all';
+            document.getElementById('venue-filter-container').style.display = 'flex';
         }
         
         updateUI(); 
         fetchData(); 
     }
-    function setCategory(c) { state.category = c; resetGridState(); updateUI(); fetchData(); }
-    function setSubFilter(s) { state.subFilter = s; updateUI(); fetchData(); }
+    function setCategory(c) { state.category = c; resetGlobalState(); updateUI(); fetchData(); }
+    function setSubFilter(s) { state.subFilter = s; pages = { made: 1, against: 1, single: 1 }; updateUI(); fetchData(); }
+    function setVenue(v) { state.venue = v; pages = { made: 1, against: 1, single: 1 }; updateUI(); fetchData(); }
     
-    function toggleSort(id) { 
-        gridState[id].sort = (gridState[id].sort === 'total' ? 'avg' : 'total'); 
-        fetchData(id); 
+    function toggleSort() { 
+        state.sort = (state.sort === 'total' ? 'avg' : 'total');
+        updateUI();
+        fetchData(); 
     }
     
-    function toggleL5(id) { 
-        gridState[id].l5 = !gridState[id].l5; 
-        fetchData(id); 
+    function toggleL5() { 
+        state.l5 = !state.l5;
+        pages = { made: 1, against: 1, single: 1 };
+        updateUI();
+        fetchData(); 
     }
 
     function updateUI() {
@@ -158,29 +192,47 @@
             }
         });
 
+        // Venue
+        ['all', 'home', 'away'].forEach(v => {
+            const btn = document.getElementById(`btn-venue-${v}`);
+            if (btn) {
+                let colorClass = '';
+                if (v === 'home') colorClass = ' text-green-400';
+                if (v === 'away') colorClass = ' text-yellow-400';
+                
+                if (state.venue === v) {
+                    btn.className = 'px-6 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-active';
+                } else {
+                    btn.className = 'px-6 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-inactive' + colorClass;
+                }
+            }
+        });
+
         // Categorias
-        const cats = ['shots','goals', 'assists', 'headers', 'cards', 'fouls', 'fouls_received'];
+        const cats = ['shots','goals', 'assists', 'headers', 'cards', 'fouls', 'fouls_received', 'corners', 'tackles', 'offsides'];
         cats.forEach(c => {
             const btn = document.getElementById(`btn-cat-${c}`);
             let show = true;
             
             // Logic for visibility
-            if (state.mode === 'referees' && (c === 'shots' || c === 'goals' || c === 'headers' || c === 'assists' || c === 'fouls_received')) show = false;
+            if (state.mode === 'referees' && (c === 'shots' || c === 'goals' || c === 'headers' || c === 'assists' || c === 'fouls_received' || c === 'corners' || c === 'tackles' || c === 'offsides')) show = false;
             if (state.mode === 'teams' && (c === 'fouls_received' || c === 'assists')) show = false;
 
             if (!show) {
-                btn.style.display = 'none';
+                if (btn) btn.style.display = 'none';
             } else {
-                btn.style.display = 'inline-block';
-                if (state.category === c) {
-                    btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-active';
-                } else {
-                    btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-inactive';
+                if (btn) {
+                    btn.style.display = 'inline-block';
+                    if (state.category === c) {
+                        btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-active';
+                    } else {
+                        btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-inactive';
+                    }
                 }
             }
         });
         
-        if (state.mode === 'referees' && (state.category === 'shots' || state.category === 'headers' || state.category === 'assists' || state.category === 'fouls_received')) {
+        if (state.mode === 'referees' && (state.category === 'shots' || state.category === 'headers' || state.category === 'assists' || state.category === 'fouls_received' || state.category === 'corners' || state.category === 'tackles' || state.category === 'offsides')) {
             state.category = 'cards';
             updateUI();
             return;
@@ -191,14 +243,38 @@
             subDiv.classList.remove('hidden');
             ['all', 'target', 'long'].forEach(s => {
                 const btn = document.getElementById(`btn-sub-${s}`);
-                if (state.subFilter === s) {
-                    btn.className = 'sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all bg-sky-500 text-white border-transparent shadow-md';
-                } else {
-                    btn.className = 'sub-btn px-4 py-1 rounded-md text-[9px] font-bold uppercase border transition-all bg-slate-800 text-slate-400 border-slate-700 hover:text-white';
+                if (btn) {
+                    if (state.subFilter === s) {
+                        btn.className = 'px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all bg-sky-500 text-white shadow-md';
+                    } else {
+                        btn.className = 'px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all text-slate-400 hover:text-white';
+                    }
                 }
             });
         } else {
             subDiv.classList.add('hidden');
+        }
+
+        // Sort & L5 buttons UI
+        const btnSort = document.getElementById('btn-global-sort');
+        const sortLabel = document.getElementById('sort-label-text');
+        if (btnSort && sortLabel) {
+            sortLabel.innerText = state.sort === 'total' ? 'Total' : 'Promedio';
+            // Optionally, style it if it's active
+            if (state.sort === 'total') {
+                btnSort.className = 'px-4 py-1.5 rounded-xl bg-sky-500 text-white flex items-center gap-1 border border-transparent text-[10px] font-black uppercase transition-all shadow-lg';
+            } else {
+                btnSort.className = 'px-4 py-1.5 rounded-xl bg-slate-900 text-slate-400 flex items-center gap-1 border border-slate-700 text-[10px] font-black uppercase transition-all hover:text-white shadow-lg';
+            }
+        }
+
+        const btnL5 = document.getElementById('btn-global-l5');
+        if (btnL5) {
+            if (state.l5) {
+                btnL5.className = 'text-[10px] font-black uppercase px-4 py-1.5 rounded-xl border transition-all shadow-lg bg-sky-500 text-white border-transparent';
+            } else {
+                btnL5.className = 'text-[10px] font-black uppercase px-4 py-1.5 rounded-xl border transition-all shadow-lg bg-slate-900 text-slate-400 border-slate-700 hover:text-white';
+            }
         }
     }
 
@@ -227,14 +303,10 @@
                 const reqs = [];
                 // Si targetId es null, traemos todo. Si no, solo el que cambio.
                 if (!targetId || targetId === 'made') {
-                    const s = gridState.made;
-                    pages.made = 1;
-                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=made&limit=${s.l5?5:''}&order_by=${s.sort}`).then(r=>r.json()).then(d => { dataCache.made = d; }));
+                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=made&limit=${state.l5?5:''}&order_by=${state.sort}&venue=${state.venue}`).then(r=>r.json()).then(d => { dataCache.made = d; }));
                 }
                 if (!targetId || targetId === 'against') {
-                    const s = gridState.against;
-                    pages.against = 1;
-                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=against&limit=${s.l5?5:''}&order_by=${s.sort}`).then(r=>r.json()).then(d => { dataCache.against = d; }));
+                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=against&limit=${state.l5?5:''}&order_by=${state.sort}&venue=${state.venue}`).then(r=>r.json()).then(d => { dataCache.against = d; }));
                 }
                 
                 await Promise.all(reqs);
@@ -247,16 +319,14 @@
                 }
 
             } else {
-                const s = gridState.single;
-                pages.single = 1;
                 let url = '';
                 if (state.mode === 'players') {
                     // Limite a 100 (10 paginas de 10)
-                    url = `/api/player_stats?rank_type=${state.category}&filter=${state.subFilter}&order_by=${s.sort}&limit=50`;
-                    if (s.l5) url += '&limit_matches=5';
+                    url = `/api/player_stats?rank_type=${state.category}&filter=${state.subFilter}&order_by=${state.sort}&limit=50&venue=${state.venue}`;
+                    if (state.l5) url += '&limit_matches=5';
                 } else {
-                    url = `/api/referee_stats?category=${state.category}&order_by=${s.sort}`;
-                    if (s.l5) url += '&limit=5';
+                    url = `/api/referee_stats?category=${state.category}&order_by=${state.sort}`;
+                    if (state.l5) url += '&limit=5';
                 }
                 
                 const data = await fetch(url).then(r => r.json());
@@ -316,19 +386,11 @@
         const start = (page - 1) * perPage;
         const visible = data.slice(start, start + perPage);
         const totalPages = Math.ceil(data.length / perPage) || 1;
-        const s = gridState[id];
 
         container.innerHTML = `
             <div class="bg-slate-800/40 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col overflow-hidden">
                 <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700/50 flex justify-between items-center">
                     <h3 class="font-black text-sky-400 uppercase text-[15px] tracking-widest">${title}</h3>
-                    <div class="flex gap-2">
-                        <button onclick="toggleSort('${id}')" class="px-3 py-1 rounded bg-slate-900 text-slate-400 flex items-center gap-1 border border-slate-700 text-[11px] font-black uppercase transition-all hover:text-white">
-                            <span>${s.sort==='total'?'Total':'Prom.'}</span>
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg>
-                        </button>
-                        <button onclick="toggleL5('${id}')" class="text-[11px] font-black uppercase px-3 py-1 rounded-full border ${s.l5?'bg-sky-500 text-white border-transparent':'bg-slate-900 text-slate-400 border-slate-700'}">Ultimos 5</button>
-                    </div>
                 </div>
                 <div class="py-2 flex-1 space-y-0">
                     ${visible.map((item, i) => renderRow(item, start + i, isTeam)).join('') || '<div class="text-center text-slate-600 italic py-10">Sin datos</div>'}

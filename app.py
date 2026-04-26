@@ -81,7 +81,7 @@ def init_notes_table():
     conn.commit()
     conn.close()
 
-def get_referee_rankings(order_by='total', limit=None):
+def get_referee_rankings(order_by='avg', limit=None):
     """
     Calcula la posicion de cada arbitro en un top basado en el volumen total de eventos.
     Retorna dos diccionarios: {NombreArbitro: PosicionRanking} para tarjetas y faltas.
@@ -134,25 +134,39 @@ def get_referee_detailed_tops():
     return [{"name": r['name'], "total": r['total'], "pj": r['pj'], "avg": round(r['avg'], 2)} for r in ref_c_q], \
            [{"name": r['name'], "total": r['total'], "pj": r['pj'], "avg": round(r['avg'], 2)} for r in ref_f_q]
 
-def get_referee_stats_logic(category='cards', order_by='total', limit=None):
+def get_referee_stats_logic(category='cards', order_by='avg', limit=None):
     conn = get_db_connection()
     if limit:
-        refs = [r[0] for r in conn.execute('SELECT DISTINCT referee FROM matches WHERE finished=1 AND referee IS NOT NULL').fetchall()]
-        results = []
-        for ref in refs:
-             matches = conn.execute('SELECT id FROM matches WHERE referee = ? AND finished = 1 ORDER BY date DESC LIMIT ?', (ref, limit)).fetchall()
-             match_ids = [str(m[0]) for m in matches]
-             pj = len(match_ids)
-             if pj == 0: continue
-             ids_str = ",".join([f"'{m}'" for m in match_ids])
-             if category == 'cards':
-                 q = f"SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 ELSE 1 END), 0) FROM cards WHERE match_id IN ({ids_str})"
-             else:
-                 q = f"SELECT SUM(fouls_committed) FROM player_match_details WHERE match_id IN ({ids_str})"
-             total = conn.execute(q).fetchone()[0] or 0
-             avg = round(total / pj, 2)
-             results.append({"name": ref, "total": total, "pj": pj, "avg": avg})
+        # Optimizacion: Usar Window Functions para obtener ultimos N partidos de TODOS los arbitros en una consulta
+        if category == 'cards':
+            val_sql = "COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 ELSE 1 END), 0)"
+            join_sql = "LEFT JOIN cards c ON m.id = c.match_id"
+        else:
+            val_sql = "COALESCE(SUM(pmd.fouls_committed), 0)"
+            join_sql = "LEFT JOIN player_match_details pmd ON m.id = pmd.match_id"
+
+        query = f"""
+            WITH RefMatches AS (
+                SELECT id, referee, ROW_NUMBER() OVER (PARTITION BY referee ORDER BY date DESC) as rn
+                FROM matches
+                WHERE finished = 1 AND referee IS NOT NULL
+            )
+            SELECT m.referee as name, {val_sql} as total, COUNT(DISTINCT m.id) as pj
+            FROM RefMatches m
+            {join_sql}
+            WHERE m.rn <= ?
+            GROUP BY m.referee
+        """
+        res = conn.execute(query, (limit,)).fetchall()
         conn.close()
+        
+        results = []
+        for r in res:
+            total = r['total']
+            pj = r['pj']
+            avg = round(total / pj, 2) if pj > 0 else 0
+            results.append({"name": r['name'], "total": total, "pj": pj, "avg": avg})
+            
         key = 'total' if order_by == 'total' else 'avg'
         results.sort(key=lambda x: x[key], reverse=True)
         return results
@@ -204,7 +218,7 @@ def get_lineup_data(match_id, team_id, cards_dict):
         res.append(d)
     return res
 
-def get_team_stats_core(category='shots', filter_type='all', order_by='total', limit=None):
+def get_team_stats_core(category='shots', filter_type='all', order_by='avg', limit=None, venue='all'):
     """
     Funcion unificada que obtiene estadisticas completas de equipos.
     Si `limit` esta presente, calcula las metricas basadas en los ultimos N partidos de cada equipo.
@@ -224,40 +238,71 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
     if not limit:
         # 1. Calculate PJ for all teams correctly
         pj_map = {}
-        matches_all = conn.execute("SELECT id_home_team, id_away_team FROM matches WHERE finished = 1").fetchall()
+        matches_all = conn.execute("SELECT id_home_team, id_away_team FROM matches WHERE finished = 1 AND cancelled = 0").fetchall()
         for m in matches_all:
             h, a = str(m[0]), str(m[1])
-            pj_map[h] = pj_map.get(h, 0) + 1
-            pj_map[a] = pj_map.get(a, 0) + 1
+            if venue in ('all', 'home'):
+                pj_map[h] = pj_map.get(h, 0) + 1
+            if venue in ('all', 'away'):
+                pj_map[a] = pj_map.get(a, 0) + 1
+
+        v_filter = ""
+        v_filter_ag = ""
+        if venue == 'home':
+            v_filter = " AND s.team_id = m.id_home_team"
+            v_filter_ag = " AND (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = m.id_home_team"
+        elif venue == 'away':
+            v_filter = " AND s.team_id = m.id_away_team"
+            v_filter_ag = " AND (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = m.id_away_team"
+        
+        # Helper to replace 's.team_id' dynamically
+        def rep_vf(prefix): return v_filter.replace('s.team_id', f'{prefix}.team_id')
+        def rep_va(prefix): return v_filter_ag.replace('s.team_id', f'{prefix}.team_id')
 
         if category == 'shots':
             if filter_type == 'target':
-                made_q = "SELECT team_id as rank_team, COUNT(*) as total FROM shots_on_target WHERE own_goal = 0 GROUP BY rank_team"
-                against_q = "SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM shots_on_target s JOIN matches m ON s.match_id = m.id WHERE s.own_goal = 0 GROUP BY rank_team"
+                made_q = f"SELECT s.team_id as rank_team, COUNT(*) as total FROM shots_on_target s JOIN matches m ON s.match_id = m.id WHERE s.own_goal = 0 AND m.finished = 1 AND m.cancelled = 0 {v_filter} GROUP BY rank_team"
+                against_q = f"SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM shots_on_target s JOIN matches m ON s.match_id = m.id WHERE s.own_goal = 0 AND m.finished = 1 AND m.cancelled = 0 {v_filter_ag} GROUP BY rank_team"
             else:
-                where_f = "AND inside_box = 0" if filter_type == 'long' else ""
-                made_q = f"SELECT team_id as rank_team, COUNT(*) as total FROM shots WHERE 1=1 {where_f} AND own_goal = 0 GROUP BY rank_team"
-                against_q = f"SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM shots s JOIN matches m ON s.match_id = m.id WHERE 1=1 {where_f} AND s.own_goal = 0 GROUP BY rank_team"
+                where_f = "AND s.inside_box = 0" if filter_type == 'long' else ""
+                made_q = f"SELECT s.team_id as rank_team, COUNT(*) as total FROM shots s JOIN matches m ON s.match_id = m.id WHERE 1=1 {where_f} AND s.own_goal = 0 AND m.finished = 1 AND m.cancelled = 0 {v_filter} GROUP BY rank_team"
+                against_q = f"SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM shots s JOIN matches m ON s.match_id = m.id WHERE 1=1 {where_f} AND s.own_goal = 0 AND m.finished = 1 AND m.cancelled = 0 {v_filter_ag} GROUP BY rank_team"
 
         elif category == 'headers':
-            made_q = "SELECT team_id as rank_team, COUNT(*) as total FROM shots WHERE shot_type = 'Header' AND own_goal = 0 GROUP BY rank_team"
-            against_q = "SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM shots s JOIN matches m ON s.match_id = m.id WHERE s.shot_type = 'Header' AND s.own_goal = 0 GROUP BY rank_team"
+            made_q = f"SELECT s.team_id as rank_team, COUNT(*) as total FROM shots s JOIN matches m ON s.match_id = m.id WHERE s.shot_type = 'Header' AND s.own_goal = 0 AND m.finished = 1 AND m.cancelled = 0 {v_filter} GROUP BY rank_team"
+            against_q = f"SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM shots s JOIN matches m ON s.match_id = m.id WHERE s.shot_type = 'Header' AND s.own_goal = 0 AND m.finished = 1 AND m.cancelled = 0 {v_filter_ag} GROUP BY rank_team"
 
         elif category == 'goals':
-            made_q = "SELECT team_id as rank_team, COUNT(*) as total FROM goals GROUP BY rank_team"
-            against_q = "SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM goals s JOIN matches m ON s.match_id = m.id GROUP BY rank_team"
+            made_q = f"SELECT s.team_id as rank_team, COUNT(*) as total FROM goals s JOIN matches m ON s.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {v_filter} GROUP BY rank_team"
+            against_q = f"SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM goals s JOIN matches m ON s.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {v_filter_ag} GROUP BY rank_team"
 
         elif category == 'cards':
-            made_q = "SELECT team_id as rank_team, COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as total FROM cards GROUP BY rank_team"
-            against_q = "SELECT (CASE WHEN c.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as total FROM cards c JOIN matches m ON c.match_id = m.id GROUP BY rank_team"
+            made_q = f"SELECT c.team_id as rank_team, COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as total FROM cards c JOIN matches m ON c.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_vf('c')} GROUP BY rank_team"
+            against_q = f"SELECT (CASE WHEN c.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) as total FROM cards c JOIN matches m ON c.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_va('c')} GROUP BY rank_team"
 
         elif category == 'fouls':
-            made_q = "SELECT team_id as rank_team, SUM(fouls_committed) as total FROM player_match_details GROUP BY rank_team"
-            against_q = "SELECT team_id as rank_team, SUM(fouls_received) as total FROM player_match_details GROUP BY rank_team"
+            made_q = f"SELECT pmd.team_id as rank_team, SUM(pmd.fouls_committed) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_vf('pmd')} GROUP BY rank_team"
+            against_q = f"SELECT pmd.team_id as rank_team, SUM(pmd.fouls_received) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_va('pmd')} GROUP BY rank_team"
 
         elif category == 'assists':
-            made_q = "SELECT team_id as rank_team, COUNT(*) as total FROM goals WHERE assist_id IS NOT NULL AND assist_id != '' GROUP BY rank_team"
-            against_q = "SELECT (CASE WHEN g.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM goals g JOIN matches m ON g.match_id = m.id WHERE g.assist_id IS NOT NULL AND g.assist_id != '' GROUP BY rank_team"
+            made_q = f"SELECT s.team_id as rank_team, COUNT(*) as total FROM goals s JOIN matches m ON s.match_id = m.id WHERE s.assist_id IS NOT NULL AND s.assist_id != '' AND m.finished = 1 AND m.cancelled = 0 {v_filter} GROUP BY rank_team"
+            against_q = f"SELECT (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, COUNT(*) as total FROM goals s JOIN matches m ON s.match_id = m.id WHERE s.assist_id IS NOT NULL AND s.assist_id != '' AND m.finished = 1 AND m.cancelled = 0 {v_filter_ag} GROUP BY rank_team"
+
+        elif category == 'tackles':
+            made_q = f"SELECT pmd.team_id as rank_team, SUM(pmd.tackles) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_vf('pmd')} GROUP BY rank_team"
+            against_q = f"SELECT (CASE WHEN pmd.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, SUM(pmd.tackles) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_va('pmd')} GROUP BY rank_team"
+
+        elif category == 'corners':
+            made_q = f"SELECT pmd.team_id as rank_team, SUM(pmd.corners) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_vf('pmd')} GROUP BY rank_team"
+            against_q = f"SELECT (CASE WHEN pmd.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, SUM(pmd.corners) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_va('pmd')} GROUP BY rank_team"
+
+        elif category == 'offsides':
+            made_q = f"SELECT pmd.team_id as rank_team, SUM(pmd.offsides) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_vf('pmd')} GROUP BY rank_team"
+            against_q = f"SELECT (CASE WHEN pmd.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, SUM(pmd.offsides) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_va('pmd')} GROUP BY rank_team"
+
+        elif category == 'fouls_rec':
+            made_q = f"SELECT pmd.team_id as rank_team, SUM(pmd.fouls_received) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_vf('pmd')} GROUP BY rank_team"
+            against_q = f"SELECT (CASE WHEN pmd.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as rank_team, SUM(pmd.fouls_received) as total FROM player_match_details pmd JOIN matches m ON pmd.match_id = m.id WHERE m.finished = 1 AND m.cancelled = 0 {rep_va('pmd')} GROUP BY rank_team"
 
         res_made = conn.execute(made_q).fetchall()
         res_against = conn.execute(against_q).fetchall()
@@ -292,82 +337,135 @@ def get_team_stats_core(category='shots', filter_type='all', order_by='total', l
         
         return made_list, against_list
 
-    # Si se solicita limitar a ultimos N partidos por equipo, hacemos calculo por equipo
-    results_made = []
-    results_against = []
-    team_ids = [t for t in teams_map.keys() if t not in relegated_list]
+    # Optimizacion: Usar Window Functions para obtener ultimos N partidos de TODOS los equipos en una consulta
+    if venue == 'home':
+        query_match_ids = """
+            SELECT team_id, match_id FROM (
+                SELECT id as match_id, id_home_team as team_id, date,
+                       ROW_NUMBER() OVER (PARTITION BY id_home_team ORDER BY date DESC) as rn
+                FROM matches WHERE finished = 1
+            ) WHERE rn <= ?
+        """
+    elif venue == 'away':
+        query_match_ids = """
+            SELECT team_id, match_id FROM (
+                SELECT id as match_id, id_away_team as team_id, date,
+                       ROW_NUMBER() OVER (PARTITION BY id_away_team ORDER BY date DESC) as rn
+                FROM matches WHERE finished = 1
+            ) WHERE rn <= ?
+        """
+    else:
+        query_match_ids = """
+            SELECT team_id, match_id FROM (
+                SELECT id as match_id, id_home_team as team_id, date,
+                       ROW_NUMBER() OVER (PARTITION BY id_home_team ORDER BY date DESC) as rn
+                FROM matches WHERE finished = 1
+                UNION ALL
+                SELECT id as match_id, id_away_team as team_id, date,
+                       ROW_NUMBER() OVER (PARTITION BY id_away_team ORDER BY date DESC) as rn
+                FROM matches WHERE finished = 1
+            ) WHERE rn <= ?
+        """
+    team_matches_rows = conn.execute(query_match_ids, (limit,)).fetchall()
+    
+    # Agrupar match_ids por team_id
+    team_matches_map = {}
+    all_limited_match_ids = set()
+    for r in team_matches_rows:
+        tid = str(r['team_id'])
+        if tid not in team_matches_map: team_matches_map[tid] = []
+        team_matches_map[tid].append(r['match_id'])
+        all_limited_match_ids.add(r['match_id'])
 
-    for tid in team_ids:
-        # Obtener ultimos `limit` partidos finalizados donde participo el equipo
-        match_rows = conn.execute('SELECT id FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?', (str(tid), str(tid), limit)).fetchall()
-        match_ids = [r[0] for r in match_rows]
-        pj = len(match_ids)
-        if pj == 0:
-            results_made.append({"id": tid, "name": teams_map.get(tid, "N/A"), "total": 0, "pj": 0, "avg": 0})
-            results_against.append({"id": tid, "name": teams_map.get(tid, "N/A"), "total": 0, "pj": 0, "avg": 0})
-            continue
+    if not all_limited_match_ids:
+        conn.close()
+        return [], []
 
-        ids_str = ",".join([f"'{m}'" for m in match_ids])
+    # Configurar SQL segun categoria
+    where_extra = ""
+    if category == 'shots':
+        table = "shots"
+        val_col = "COUNT(*)"
+        where_extra = " AND own_goal = 0"
+        if filter_type == 'target': where_extra += " AND on_target = 1"
+        elif filter_type == 'long': where_extra += " AND inside_box = 0"
+    elif category == 'headers':
+        table = "shots"
+        val_col = "COUNT(*)"
+        where_extra = " AND shot_type = 'Header' AND own_goal = 0"
+    elif category == 'goals':
+        table = "goals"
+        val_col = "COUNT(*)"
+    elif category == 'cards':
+        table = "cards"
+        val_col = "COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0)"
+    elif category == 'fouls':
+        table = "player_match_details"
+        val_col = "COALESCE(SUM(fouls_committed), 0)"
+    elif category == 'assists':
+        table = "goals"
+        val_col = "COUNT(*)"
+        where_extra = " AND assist_id IS NOT NULL AND assist_id != ''"
+    elif category == 'tackles':
+        table = "player_match_details"
+        val_col = "COALESCE(SUM(tackles), 0)"
+    elif category == 'corners':
+        table = "player_match_details"
+        val_col = "COALESCE(SUM(corners), 0)"
+    elif category == 'offsides':
+        table = "player_match_details"
+        val_col = "COALESCE(SUM(offsides), 0)"
+    elif category == 'fouls_rec':
+        table = "player_match_details"
+        val_col = "COALESCE(SUM(fouls_received), 0)"
+    else:
+        table, val_col = "matches", "0"
 
-        if category == 'shots':
-            if filter_type == 'target':
-                q_made = f"SELECT COUNT(*) FROM shots_on_target WHERE team_id = ? AND match_id IN ({ids_str}) AND own_goal = 0"
-                total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
-                q_against = f"SELECT COUNT(*) FROM shots_on_target s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.match_id IN ({ids_str}) AND s.own_goal = 0"
-                total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
-            else:
-                where_f = "AND inside_box = 0" if filter_type == 'long' else ""
-                # A favor: contar eventos del equipo en esos partidos
-                q_made = f"SELECT COUNT(*) FROM shots WHERE team_id = ? AND match_id IN ({ids_str}) {where_f} AND own_goal = 0"
-                total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
-                # En contra: contar eventos del rival en esos partidos
-                q_against = f"SELECT COUNT(*) FROM shots s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.match_id IN ({ids_str}) {where_f} AND s.own_goal = 0"
-                total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
-
-        elif category == 'headers':
-            q_made = f"SELECT COUNT(*) FROM shots WHERE team_id = ? AND shot_type = 'Header' AND match_id IN ({ids_str}) AND own_goal = 0"
-            total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
-            q_against = f"SELECT COUNT(*) FROM shots s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.shot_type = 'Header' AND s.match_id IN ({ids_str}) AND s.own_goal = 0"
-            total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
-
-        elif category == 'goals':
-            q_made = f"SELECT COUNT(*) FROM goals WHERE team_id = ? AND match_id IN ({ids_str})"
-            total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
-            q_against = f"SELECT COUNT(*) FROM goals s JOIN matches m ON s.match_id = m.id WHERE (CASE WHEN s.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND s.match_id IN ({ids_str})"
-            total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
-
-        elif category == 'cards':
-            q_made = f"SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE team_id = ? AND match_id IN ({ids_str})"
-            total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
-            q_against = f"SELECT COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards c JOIN matches m ON c.match_id = m.id WHERE (CASE WHEN c.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND c.match_id IN ({ids_str})"
-            total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
-
-        elif category == 'fouls':
-            q_made = f"SELECT SUM(pmd.fouls_committed) FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str})"
-            total_m = conn.execute(q_made, (str(tid),)).fetchone()[0] or 0
-            q_against = f"SELECT SUM(pmd.fouls_received) FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str})"
-            total_a = conn.execute(q_against, (str(tid),)).fetchone()[0] or 0
-
-        elif category == 'assists':
-            q_made = f"SELECT COUNT(*) FROM goals WHERE team_id = ? AND match_id IN ({ids_str}) AND assist_id IS NOT NULL AND assist_id != ''"
-            total_m = conn.execute(q_made, (str(tid),)).fetchone()[0]
-            q_against = f"SELECT COUNT(*) FROM goals g JOIN matches m ON g.match_id = m.id WHERE (CASE WHEN g.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) = ? AND g.match_id IN ({ids_str}) AND g.assist_id IS NOT NULL AND g.assist_id != ''"
-            total_a = conn.execute(q_against, (str(tid),)).fetchone()[0]
-
-        avg_m = round(total_m / pj, 2) if pj > 0 else 0
-        avg_a = round(total_a / pj, 2) if pj > 0 else 0
-
-        results_made.append({"id": tid, "name": teams_map.get(tid, "N/A"), "total": int(total_m), "pj": pj, "avg": avg_m})
-        results_against.append({"id": tid, "name": teams_map.get(tid, "N/A"), "total": int(total_a), "pj": pj, "avg": avg_a})
-
+    ids_str = ",".join([f"'{m}'" for m in all_limited_match_ids])
+    
+    # A favor (made)
+    q_made = f"SELECT team_id, match_id, {val_col} as val FROM {table} WHERE match_id IN ({ids_str}) {where_extra} GROUP BY team_id, match_id"
+    made_rows = conn.execute(q_made).fetchall()
+    
+    # En contra (against) - Mapeamos el evento del rival hacia el equipo analizado
+    q_against = f"""
+        SELECT (CASE WHEN t.team_id = m.id_home_team THEN m.id_away_team ELSE m.id_home_team END) as team_id, t.match_id, {val_col} as val 
+        FROM {table} t JOIN matches m ON t.match_id = m.id 
+        WHERE t.match_id IN ({ids_str}) {where_extra} 
+        GROUP BY team_id, t.match_id
+    """
+    against_rows = conn.execute(q_against).fetchall()
     conn.close()
+
+    # Procesar y agregar en Python
+    def aggregate_stats(rows):
+        data = {} # (tid, mid) -> val
+        for r in rows:
+            data[(str(r['team_id']), str(r['match_id']))] = r['val']
+        
+        output = []
+        for tid, tname in teams_map.items():
+            if tid in relegated_list: continue
+            
+            m_ids = team_matches_map.get(tid, [])
+            total = 0
+            pj = len(m_ids)
+            for mid in m_ids:
+                total += data.get((tid, mid), 0)
+            
+            avg = round(total / pj, 2) if pj > 0 else 0
+            output.append({"id": tid, "name": tname, "total": int(total), "pj": pj, "avg": avg})
+        return output
+
+    made_list = aggregate_stats(made_rows)
+    against_list = aggregate_stats(against_rows)
 
     # Ordenamos por la metrica solicitada
     key = (lambda x: x['total']) if order_by == 'total' else (lambda x: x['avg'])
-    results_made.sort(key=key, reverse=True)
-    results_against.sort(key=key, reverse=True)
+    made_list.sort(key=key, reverse=True)
+    against_list.sort(key=key, reverse=True)
 
-    return results_made, results_against
+    return made_list, against_list
 
 def _get_stat_sql_config(rank_type, filter_type):
     """Helper para obtener fragmentos SQL segun el tipo de estadistica."""
@@ -411,15 +509,15 @@ def _get_stat_sql_config(rank_type, filter_type):
         
     return base_join, val_col, extra_where
 
-def get_rankings_from_stats(category='shots', filter_type='all', order_by='total', limit=None):
+def get_rankings_from_stats(category='shots', filter_type='all', order_by='avg', limit=None, venue='all'):
     """Helper para el predictor: convierte las listas de stats en dicts de ranking {ID: Posicion}"""
-    made_list, against_list = get_team_stats_core(category, filter_type, order_by, limit=limit)
+    made_list, against_list = get_team_stats_core(category, filter_type, order_by, limit=limit, venue=venue)
     # enumerate genera la posicion basandose en el orden de la consulta SQL
     rank_made = {item['id']: i+1 for i, item in enumerate(made_list)}
     rank_against = {item['id']: i+1 for i, item in enumerate(against_list)}
     return rank_made, rank_against
 
-def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', limit=None, match_id=None, order_by='total', context_match_id=None):
+def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', limit=None, match_id=None, order_by='avg', context_match_id=None):
     """
     Ranking de jugadores individuales. 
     Si limit tiene valor (ej: 5), busca solo los ultimos N partidos finalizados del equipo.
@@ -579,16 +677,27 @@ def get_team_rankings_logic(team_id, rank_type='tiradores', filter_type='all', l
 
 
 
-def get_prediction_logic(home_id, away_id, category='shots', filter_type='all', referee=None, precalc_ranks=None, limit=None):
+def get_prediction_logic(home_id, away_id, category='shots', filter_type='all', referee=None, precalc_ranks=None, limit=None, venue_split=False):
     """
     Motor de prediccion probabilistica. 
     Cruza los rankings de ataque/defensa y aplica la rigurosidad del arbitro en Tarjetas y Faltas.
     Retorna los rankings individuales de cada parte para su visualizacion en la UI.
     """
-    if precalc_ranks: m_ranks, a_ranks, ref_ranks = precalc_ranks
-    else: m_ranks, a_ranks = get_rankings_from_stats(category, filter_type, order_by= 'avg', limit=limit); ref_ranks = None
-    rm_h = m_ranks.get(str(home_id), 15); ra_h = a_ranks.get(str(home_id), 15)
-    rm_v = m_ranks.get(str(away_id), 15); ra_v = a_ranks.get(str(away_id), 15)
+    if precalc_ranks: 
+        m_ranks, a_ranks, ref_ranks = precalc_ranks
+        rm_h = m_ranks.get(str(home_id), 15); ra_h = a_ranks.get(str(home_id), 15)
+        rm_v = m_ranks.get(str(away_id), 15); ra_v = a_ranks.get(str(away_id), 15)
+    else: 
+        if venue_split:
+            m_ranks_h, a_ranks_h = get_rankings_from_stats(category, filter_type, order_by='avg', limit=limit, venue='home')
+            m_ranks_v, a_ranks_v = get_rankings_from_stats(category, filter_type, order_by='avg', limit=limit, venue='away')
+            rm_h = m_ranks_h.get(str(home_id), 15); ra_h = a_ranks_h.get(str(home_id), 15)
+            rm_v = m_ranks_v.get(str(away_id), 15); ra_v = a_ranks_v.get(str(away_id), 15)
+        else:
+            m_ranks, a_ranks = get_rankings_from_stats(category, filter_type, order_by= 'avg', limit=limit)
+            rm_h = m_ranks.get(str(home_id), 15); ra_h = a_ranks.get(str(home_id), 15)
+            rm_v = m_ranks.get(str(away_id), 15); ra_v = a_ranks.get(str(away_id), 15)
+        ref_ranks = None
     ref_val = None
     if referee and category in ['cards', 'fouls']:
         if not ref_ranks:
@@ -597,7 +706,7 @@ def get_prediction_logic(home_id, away_id, category='shots', filter_type='all', 
         ref_val = ref_ranks.get(referee, 15)
         h_s = int(((30 - rm_h) + (30 - ra_v) + (30 - ref_val)) / 87 * 100)
         v_s = int(((30 - rm_v) + (30 - ra_h) + (30 - ref_val)) / 87 * 100)
-        gen = int(((30 - rm_h) + (30 - ra_h) + (30 - rm_v) + (30 - ra_v) + (30 - ref_val)) / 143 * 100)
+        gen = int(((30 - rm_h) + (30 - ra_h) + (30 - rm_v) + (30 - ra_v) + (30 - ref_val)) / 145 * 100)
     else:
         h_s = int(((30 - rm_h) + (30 - ra_v)) / 58 * 100)
         v_s = int(((30 - rm_v) + (30 - ra_h)) / 58 * 100)
@@ -632,14 +741,20 @@ def get_team_global_positions(team_id):
         
     return detailed_ranks
 
-def get_league_player_stats(rank_type='shots', filter_type='all',order_by='total', limit=100):
+def get_league_player_stats(rank_type='shots', filter_type='all',order_by='avg', limit=100, venue='all'):
     conn = get_db_connection()
+    relegated_list = ['10227', '89395']
+    relegated_str = ",".join([f"'{tid}'" for tid in relegated_list])
     # Subconsulta para obtener el nombre del equipo mas reciente del jugador
     team_sub = "(SELECT CASE WHEN pmd2.team_id = m2.id_home_team THEN m2.home_team ELSE m2.away_team END FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
     # Subconsulta para obtener el ID del equipo mas reciente
     team_id_sub = "(SELECT pmd2.team_id FROM player_match_details pmd2 JOIN matches m2 ON pmd2.match_id = m2.id WHERE pmd2.player_id = pmd.player_id ORDER BY m2.date DESC LIMIT 1)"
     
-    pj = "SELECT player_id, COUNT(DISTINCT pmd.match_id) as pj, SUM(pmd.minutes_played) as minutes_played FROM player_match_details pmd WHERE pmd.minutes_played > 0 GROUP BY player_id"
+    v_f = ""
+    if venue == 'home': v_f = " AND pmd.team_id = (SELECT id_home_team FROM matches m2 WHERE m2.id = pmd.match_id)"
+    elif venue == 'away': v_f = " AND pmd.team_id = (SELECT id_away_team FROM matches m2 WHERE m2.id = pmd.match_id)"
+    
+    pj = f"SELECT player_id, COUNT(DISTINCT pmd.match_id) as pj, SUM(pmd.minutes_played) as minutes_played FROM player_match_details pmd WHERE pmd.minutes_played > 0 {v_f} GROUP BY player_id"
     order_by_clause = '(pj_table.minutes_played >= 300) DESC, avg' if order_by == 'avg' else 'total'
     
     join_sql, val_sql, where_sql = _get_stat_sql_config(rank_type, filter_type)
@@ -649,7 +764,7 @@ def get_league_player_stats(rank_type='shots', filter_type='all',order_by='total
     FROM player_match_details pmd 
     {join_sql} 
     LEFT JOIN ({pj}) pj_table ON pmd.player_id = pj_table.player_id
-    WHERE 1=1 {where_sql} 
+    WHERE pmd.team_id NOT IN ({relegated_str}) {where_sql} {v_f} 
     GROUP BY pmd.player_id HAVING total > 0 
     ORDER BY {order_by_clause} DESC LIMIT {limit}'''
     
@@ -658,7 +773,7 @@ def get_league_player_stats(rank_type='shots', filter_type='all',order_by='total
     return [{"id": r["id"], "name": r["name"], "t_id": r["team_id"], "t_name": r["team_name"], "total": int(r["total"]), "pj": r["pj"], "minutes_played": int(r["minutes_played"]) ,"avg": round(r["avg"], 2)} for r in res]
 
 
-def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', order_by='total', match_limit=5, limit=100):
+def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', order_by='avg', match_limit=5, limit=100, venue='all'):
     """Calcula estadisticas de jugadores usando los ultimos `match_limit` partidos de cada equipo.
 
     Para cada equipo, obtenemos sus ultimos `match_limit` partidos finalizados y contamos
@@ -666,15 +781,21 @@ def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', o
     por jugador a nivel de liga para construir el top.
     """
     conn = get_db_connection()
+    relegated_list = ['10227', '89395']
     # Obtener lista de equipos (ids)
     team_rows = conn.execute("SELECT DISTINCT id_home_team as id FROM matches UNION SELECT DISTINCT id_away_team as id FROM matches").fetchall()
-    team_ids = [str(r['id']) for r in team_rows if r['id'] is not None]
+    team_ids = [str(r['id']) for r in team_rows if r['id'] is not None and str(r['id']) not in relegated_list]
 
     player_totals = {}  # pid -> {id, name, t_id, total, pj, minutes_played}
 
     for tid in team_ids:
         # ultimos match_limit partidos del equipo
-        mrows = conn.execute('SELECT id FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?', (str(tid), str(tid), match_limit)).fetchall()
+        if venue == 'home':
+            mrows = conn.execute('SELECT id FROM matches WHERE id_home_team = ? AND finished = 1 ORDER BY date DESC LIMIT ?', (str(tid), match_limit)).fetchall()
+        elif venue == 'away':
+            mrows = conn.execute('SELECT id FROM matches WHERE id_away_team = ? AND finished = 1 ORDER BY date DESC LIMIT ?', (str(tid), match_limit)).fetchall()
+        else:
+            mrows = conn.execute('SELECT id FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?', (str(tid), str(tid), match_limit)).fetchall()
         match_ids = [r[0] for r in mrows]
         if not match_ids:
             continue
@@ -704,6 +825,15 @@ def get_league_player_stats_last_matches(rank_type='shots', filter_type='all', o
             rows = conn.execute(q, (str(tid),)).fetchall()
         elif rank_type == 'assists':
             q = f"SELECT g.assist_id as pid, pmd.last_name as pname, g.team_id as t_id, COUNT(*) as total FROM goals g JOIN player_match_details pmd ON g.assist_id = pmd.player_id AND g.match_id = pmd.match_id WHERE g.team_id = ? AND g.match_id IN ({ids_str}) AND g.assist_id IS NOT NULL AND g.assist_id != '' GROUP BY g.assist_id"
+            rows = conn.execute(q, (str(tid),)).fetchall()
+        elif rank_type == 'tackles':
+            q = f"SELECT pmd.player_id as pid, pmd.last_name as pname, pmd.team_id as t_id, SUM(pmd.tackles) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
+            rows = conn.execute(q, (str(tid),)).fetchall()
+        elif rank_type == 'corners':
+            q = f"SELECT pmd.player_id as pid, pmd.last_name as pname, pmd.team_id as t_id, SUM(pmd.corners) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
+            rows = conn.execute(q, (str(tid),)).fetchall()
+        elif rank_type == 'offsides':
+            q = f"SELECT pmd.player_id as pid, pmd.last_name as pname, pmd.team_id as t_id, SUM(pmd.offsides) as total FROM player_match_details pmd WHERE pmd.team_id = ? AND pmd.match_id IN ({ids_str}) GROUP BY pmd.player_id"
             rows = conn.execute(q, (str(tid),)).fetchall()
         else:
             rows = []
@@ -760,24 +890,31 @@ def index():
         else: year = year or (years[0] if years else "2025"); tournament = tournament or "Liga Profesional Apertura"; gameweek = gameweek or "1"
     matches_raw = conn.execute("SELECT * FROM matches WHERE strftime('%Y', date) = ? AND gameweek = ? AND tournament LIKE ? ORDER BY date ASC", (str(year), str(gameweek), f'%{tournament}%')).fetchall()
     # Rankings rapidos para las tarjetas del index
-    rs_m, rs_a = get_rankings_from_stats('shots', order_by='avg')
-    rh_m, rh_a = get_rankings_from_stats('headers', order_by='avg')
-    rc_m, rc_a = get_rankings_from_stats('cards', order_by='avg')
-    rf_m, rf_a = get_rankings_from_stats('fouls', order_by='avg')    
-    ref_c, ref_f = get_referee_rankings(order_by='avg')
     matches = []
     for m in matches_raw:
         row = dict(m)
-        ps = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'shots', precalc_ranks=(rs_m, rs_a, None))
-        ph = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'headers', precalc_ranks=(rh_m, rh_a, None))
-        pc = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'cards', referee=row['referee'], precalc_ranks=(rc_m, rc_a, ref_c))
-        pf = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'fouls', referee=row['referee'], precalc_ranks=(rf_m, rf_a, ref_f))
-        row['preds'] = { 's_home': ps['h'], 's_away': ps['v'], 's_gen': ps['gen'], 'h_home': ph['h'], 'h_away': ph['v'], 'h_gen': ph['gen'], 'c_home': pc['h'], 'c_away': pc['v'], 'c_gen': pc['gen'],'c_ref': pc['ref_rank'], 'f_home': pf['h'], 'f_away': pf['v'], 'f_gen': pf['gen'], 'f_ref': pf['ref_rank']}
+        ps = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'shots', venue_split=True)
+        ph = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'headers', venue_split=True)
+        pc = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'cards', referee=row['referee'], venue_split=True)
+        pf = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'fouls', referee=row['referee'], venue_split=True)
+        pcor = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'corners', venue_split=True)
+        pt = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'tackles', venue_split=True)
+        po = get_prediction_logic(row['id_home_team'], row['id_away_team'], 'offsides', venue_split=True)
+        
+        row['preds'] = { 
+            's_home': ps['h'], 's_away': ps['v'], 's_gen': ps['gen'], 
+            'h_home': ph['h'], 'h_away': ph['v'], 'h_gen': ph['gen'], 
+            'c_home': pc['h'], 'c_away': pc['v'], 'c_gen': pc['gen'],'c_ref': pc['ref_rank'], 
+            'f_home': pf['h'], 'f_away': pf['v'], 'f_gen': pf['gen'], 'f_ref': pf['ref_rank'],
+            'cor_home': pcor['h'], 'cor_away': pcor['v'], 'cor_gen': pcor['gen'],
+            't_home': pt['h'], 't_away': pt['v'], 't_gen': pt['gen'],
+            'o_home': po['h'], 'o_away': po['v'], 'o_gen': po['gen']
+        }
         matches.append(row)
 
     sort_by = request.args.get('sort_by')
     if sort_by:
-        key_map = {'shots': 's', 'headers': 'h', 'fouls': 'f', 'cards': 'c'}
+        key_map = {'shots': 's', 'headers': 'h', 'fouls': 'f', 'cards': 'c', 'corners': 'cor', 'tackles': 't', 'offsides': 'o'}
         prefix = key_map.get(sort_by)
         if prefix:
             matches.sort(key=lambda x: max(x['preds'][f'{prefix}_home'], x['preds'][f'{prefix}_away'], x['preds'][f'{prefix}_gen']), reverse=True)
@@ -803,6 +940,9 @@ def match_detail(match_id):
     pred_h = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'headers')
     pred_c = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'cards', referee=match['referee'])
     pred_f = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'fouls', referee=match['referee'])
+    pred_t = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'tackles')
+    pred_cor = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'corners')
+    pred_o = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'offsides')
 
     cards_dict = {str(r['player_id']): r['card_type'] for r in conn.execute('SELECT player_id, card_type FROM cards WHERE match_id = ?', (str(match_id),)).fetchall()}
 
@@ -1014,7 +1154,7 @@ def match_detail(match_id):
     next_match = conn.execute('SELECT * FROM matches WHERE date > ? OR (date = ? AND id > ?) ORDER BY date ASC, id ASC LIMIT 1', (match['date'], match['date'], str(match_id))).fetchone()
 
     conn.close()
-    return render_template('detail.html', match=match, prev_match=prev_match, next_match=next_match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf, h2h_matches=h2h_matches, ref_history=ref_history, l5_home=l5_home, l5_away=l5_away, last_match_home=last_match_home, last_match_away=last_match_away, h_mid=h_mid, a_mid=a_mid, match_goals=match_goals, match_shots=match_shots, unavail_home=unavail_home, unavail_away=unavail_away)
+    return render_template('detail.html', match=match, prev_match=prev_match, next_match=next_match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, pred_cor=pred_cor, pred_t=pred_t, pred_o=pred_o, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf, h2h_matches=h2h_matches, ref_history=ref_history, l5_home=l5_home, l5_away=l5_away, last_match_home=last_match_home, last_match_away=last_match_away, h_mid=h_mid, a_mid=a_mid, match_goals=match_goals, match_shots=match_shots, unavail_home=unavail_home, unavail_away=unavail_away)
 
 @app.route('/api/team_ranking/<team_id>')
 def api_team_ranking(team_id):
@@ -1040,7 +1180,8 @@ def api_team_stats():
     side = request.args.get('side', 'made')
     limit = request.args.get('limit', type=int)
     order_by = request.args.get('order_by', 'total')
-    made, against = get_team_stats_core(category, filter_type, order_by=order_by, limit=limit)
+    venue = request.args.get('venue', 'all')
+    made, against = get_team_stats_core(category, filter_type, order_by=order_by, limit=limit, venue=venue)
     data = made if side == 'made' else against
     return jsonify(data)
 
@@ -1054,12 +1195,13 @@ def api_player_stats():
     filter_type = request.args.get('filter', 'all')
     limit_matches = request.args.get('limit_matches', type=int)
     order_by = request.args.get('order_by', 'total')
+    venue = request.args.get('venue', 'all')
     if limit_matches:
         limit = request.args.get('limit', type=int) or 100
-        data = get_league_player_stats_last_matches(rank_type, filter_type, order_by=order_by, match_limit=limit_matches, limit=limit)
+        data = get_league_player_stats_last_matches(rank_type, filter_type, order_by=order_by, match_limit=limit_matches, limit=limit, venue=venue)
     else:
         limit = request.args.get('limit', type=int) or 100
-        data = get_league_player_stats(rank_type, filter_type, order_by=order_by, limit=limit)
+        data = get_league_player_stats(rank_type, filter_type, order_by=order_by, limit=limit, venue=venue)
     return jsonify(data)
 
 @app.route('/api/referee_stats')
@@ -1217,13 +1359,15 @@ def api_match_prediction(match_id):
     if not match: return jsonify({"error": "N/A"}), 404
     ft = request.args.get('shot_filter', 'all')
     limit = request.args.get('limit', type=int)
+    venue_split = request.args.get('venue_split') == 'true'
     return jsonify({
-        "shots": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'shots', ft, limit=limit),
-        "headers": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'headers', limit=limit),
-        "cards": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'cards', referee=match['referee'], limit=limit),
-        "fouls": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'fouls', referee=match['referee'], limit=limit),
-        "tackles": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'tackles', limit=limit),
-        "corners": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'corners', limit=limit)
+        "shots": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'shots', ft, limit=limit, venue_split=venue_split),
+        "headers": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'headers', limit=limit, venue_split=venue_split),
+        "cards": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'cards', referee=match['referee'], limit=limit, venue_split=venue_split),
+        "fouls": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'fouls', referee=match['referee'], limit=limit, venue_split=venue_split),
+        "tackles": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'tackles', limit=limit, venue_split=venue_split),
+        "corners": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'corners', limit=limit, venue_split=venue_split),
+        "offsides": get_prediction_logic(match['id_home_team'], match['id_away_team'], 'offsides', limit=limit, venue_split=venue_split)
     })
 
 @app.route('/api/match_heatmap/<match_id>')
@@ -1277,7 +1421,7 @@ def search_players(team_id):
     conn = get_db_connection()
     # Busca jugadores unicos por nombre que hayan jugado en ese equipo o por numero de camiseta
     players = conn.execute('''
-        SELECT player_id, first_name, last_name, position, shirt_number
+        SELECT player_id, first_name, last_name, position, shirt_number, presences
         FROM (
             SELECT
                 pmd.player_id,
@@ -1285,6 +1429,7 @@ def search_players(team_id):
                 pmd.last_name,
                 pmd.position,
                 pmd.shirt_number,
+                COUNT(pmd.match_id) OVER (PARTITION BY pmd.player_id) as presences,
                 ROW_NUMBER() OVER (
                     PARTITION BY pmd.player_id
                     ORDER BY m.date DESC
@@ -1299,6 +1444,7 @@ def search_players(team_id):
             AND pmd.unavailable = 0
         )
         WHERE rn = 1
+        ORDER BY presences DESC
         LIMIT 100
     ''', (str(team_id), f'%{q}%', q)).fetchall()
     conn.close()
@@ -1309,6 +1455,7 @@ def search_players(team_id):
         d['last_name'] = d['last_name']
         d['number'] = d['shirt_number']
         d['id'] = str(d['player_id'])
+        d['presences'] = d['presences']
         res.append(d)
     return jsonify(res)
 @app.route('/team/<team_id>')

@@ -460,7 +460,7 @@
         const contextDiv = document.getElementById(`${side}-l5-context`);
         const lastMatchDiv = document.getElementById(`${side}-last-match-context`);
 
-        // Resetear el otro boton
+        // Resetear el otro boton y manejar contextos
         if (l5_active[side]) {
             btnPart.classList.remove('bg-sky-500', 'text-white');
             btnPart.classList.add('text-slate-400', 'bg-slate-900');
@@ -468,6 +468,8 @@
             if (lastMatchDiv) { lastMatchDiv.classList.add('hidden'); lastMatchDiv.classList.remove('flex'); }
         } else {
             if (contextDiv) { contextDiv.classList.add('hidden'); contextDiv.classList.remove('flex'); }
+            // Si tambien estaba desactivado el match_focus, nos aseguramos que lastMatchDiv este oculto
+            if (!match_focus[side] && lastMatchDiv) { lastMatchDiv.classList.add('hidden'); lastMatchDiv.classList.remove('flex'); }
         }
 
         btnL5.classList.toggle('bg-sky-500', l5_active[side]);
@@ -493,6 +495,7 @@
         btnPart.classList.toggle('bg-sky-500', match_focus[side]);
         btnPart.classList.toggle('text-white', match_focus[side]);
         btnPart.classList.toggle('bg-slate-900', !match_focus[side]);
+        btnPart.classList.toggle('text-slate-400', !match_focus[side]);
 
         btnL5.classList.remove('bg-sky-500', 'text-white');
         btnL5.classList.add('text-slate-400', 'bg-slate-900');
@@ -896,47 +899,96 @@
 
     let currentShotFilter = '{{ current_filter }}';
     let currentPredictionLimit = null;
+    let currentVenueSplit = false;
 
-    function updatePredictions(f, limit = undefined) {
-        if (f !== undefined) currentShotFilter = f;
-        if (limit !== undefined) currentPredictionLimit = limit;
+    function updatePredictions(f, limit, venueSplit) {
+        if (f !== undefined && f !== null) currentShotFilter = f;
+        if (limit !== undefined && limit !== null) currentPredictionLimit = limit === -1 ? null : limit;
+        if (venueSplit !== undefined && venueSplit !== null) currentVenueSplit = venueSplit;
         
-        const limitParam = currentPredictionLimit ? `&limit=${currentPredictionLimit}` : '';
-        fetch(`/api/match_prediction/{{ match.id }}?shot_filter=${currentShotFilter}${limitParam}`).then(r => r.json()).then(d => {
-            ['shots', 'headers', 'cards', 'fouls'].forEach(c => {
-                const sd = d[c];
-                if (!sd) return;
-                const h = document.getElementById(`val-${c}-h`), v = document.getElementById(`val-${c}-v`), g = document.getElementById(`val-${c}-gen`);
-                if (h) { h.innerText = sd.h; h.className = `text-3xl font-black ${getScoreColorClass(sd.h)}`; }
-                if (v) { v.innerText = sd.v; v.className = `text-3xl font-black ${getScoreColorClass(sd.v)}`; }
-                if (g) { g.innerText = sd.gen; g.className = `text-5xl font-black ${getScoreColorClass(sd.gen)}`; }
-
-                const rankRmh = document.getElementById(`rank-${c}-rmh`), rankRav = document.getElementById(`rank-${c}-rav`), rankRah = document.getElementById(`rank-${c}-rah`), rankRmv = document.getElementById(`rank-${c}-rmv`);
-                if (rankRmh) { rankRmh.innerText = `#${sd.rm_h}`; rankRmh.className = `font-black ${getPosColorClass(sd.rm_h)}`; }
-                if (rankRav) { rankRav.innerText = `#${sd.ra_v}`; rankRav.className = `font-black ${getPosColorClass(sd.ra_v)}`; }
-                if (rankRah) { rankRah.innerText = `#${sd.ra_h}`; rankRah.className = `font-black ${getPosColorClass(sd.ra_h)}`; }
-                if (rankRmv) { rankRmv.innerText = `#${sd.rm_v}`; rankRmv.className = `font-black ${getPosColorClass(sd.rm_v)}`; }
-            });
-
-            // Update shot filter buttons
-            document.querySelectorAll('.pred-filter-btn').forEach(b => { 
-                b.classList.remove('bg-sky-500', 'text-white'); 
-                b.classList.add('text-slate-400'); 
-            });
-            const ab = document.getElementById(`pred-filter-${currentShotFilter}`); 
-            if (ab) { ab.classList.add('bg-sky-500', 'text-white'); ab.classList.remove('text-slate-400'); }
-            
-            // Update limit buttons
-            document.querySelectorAll('.pred-limit-btn').forEach(b => {
-                b.classList.remove('bg-sky-600', 'text-white', 'shadow-lg');
-                b.classList.add('text-slate-400');
-            });
-            const lb = document.getElementById(currentPredictionLimit ? 'pred-limit-5' : 'pred-limit-all');
-            if (lb) { 
-                lb.classList.add('bg-sky-600', 'text-white', 'shadow-lg'); 
-                lb.classList.remove('text-slate-400'); 
-            }
+        // Actualizar UI de botones de limite inmediatamente
+        document.querySelectorAll('.pred-limit-btn').forEach(b => {
+            b.classList.remove('bg-sky-600', 'text-white', 'shadow-lg');
+            b.classList.add('text-slate-400', 'hover:text-white');
         });
+        const activeLimitBtn = document.getElementById(currentPredictionLimit ? 'pred-limit-5' : 'pred-limit-all');
+        if (activeLimitBtn) {
+            activeLimitBtn.classList.add('bg-sky-600', 'text-white', 'shadow-lg');
+            activeLimitBtn.classList.remove('text-slate-400', 'hover:text-white');
+        }
+
+        // Actualizar UI de botones de venue
+        document.querySelectorAll('.pred-venue-btn').forEach(b => {
+            b.classList.remove('bg-sky-600', 'text-white', 'shadow-lg');
+            b.classList.add('text-slate-400', 'hover:text-white');
+        });
+        const activeVenueBtn = document.getElementById(currentVenueSplit ? 'pred-venue-split' : 'pred-venue-all');
+        if (activeVenueBtn) {
+            activeVenueBtn.classList.add('bg-sky-600', 'text-white', 'shadow-lg');
+            activeVenueBtn.classList.remove('text-slate-400', 'hover:text-white');
+        }
+
+        // Construccion de URL: Si es temporada (limit null), no enviamos el parametro limit
+        let url = `/api/match_prediction/{{ match.id }}?shot_filter=${currentShotFilter}`;
+        if (currentPredictionLimit) {
+            url += `&limit=${currentPredictionLimit}`;
+        }
+        if (currentVenueSplit) {
+            url += `&venue_split=true`;
+        }
+
+        console.log("Fetching predictions:", url);
+
+        fetch(url)
+            .then(r => {
+                if (!r.ok) throw new Error('Network response was not ok');
+                return r.json();
+            })
+            .then(d => {
+                ['shots', 'headers', 'cards', 'fouls', 'corners', 'tackles', 'offsides'].forEach(c => {
+                    const sd = d[c];
+                    if (!sd) return;
+                    
+                    const h = document.getElementById(`val-${c}-h`), 
+                          v = document.getElementById(`val-${c}-v`), 
+                          g = document.getElementById(`val-${c}-gen`);
+                    
+                    if (h) { h.innerText = sd.h; h.className = `text-3xl font-black ${getScoreColorClass(sd.h)}`; }
+                    if (v) { v.innerText = sd.v; v.className = `text-3xl font-black ${getScoreColorClass(sd.v)}`; }
+                    if (g) { g.innerText = sd.gen; g.className = `text-5xl font-black ${getScoreColorClass(sd.gen)}`; }
+
+                    const rankRmh = document.getElementById(`rank-${c}-rmh`), 
+                          rankRav = document.getElementById(`rank-${c}-rav`), 
+                          rankRah = document.getElementById(`rank-${c}-rah`), 
+                          rankRmv = document.getElementById(`rank-${c}-rmv`);
+                    
+                    if (rankRmh) { rankRmh.innerText = `#${sd.rm_h}`; rankRmh.className = `font-black ${getPosColorClass(sd.rm_h)}`; }
+                    if (rankRav) { rankRav.innerText = `#${sd.ra_v}`; rankRav.className = `font-black ${getPosColorClass(sd.ra_v)}`; }
+                    if (rankRah) { rankRah.innerText = `#${sd.ra_h}`; rankRah.className = `font-black ${getPosColorClass(sd.ra_h)}`; }
+                    if (rankRmv) { rankRmv.innerText = `#${sd.rm_v}`; rankRmv.className = `font-black ${getPosColorClass(sd.rm_v)}`; }
+
+                    const refRankSpan = document.getElementById(`rank-${c}-refrank`);
+                    if (refRankSpan) {
+                        if (sd.ref_rank) {
+                            refRankSpan.innerHTML = `arbitro <span class="${getPosColorClass(sd.ref_rank)}">#${sd.ref_rank}</span> en ${c === 'cards' ? 'Tarjetas' : 'Faltas'}`;
+                            refRankSpan.parentElement.style.display = 'block';
+                        } else {
+                            refRankSpan.parentElement.style.display = 'none';
+                        }
+                    }
+                });
+
+                // Update shot filter buttons highlighting
+                document.querySelectorAll('.pred-filter-btn').forEach(b => { 
+                    b.classList.remove('bg-sky-500', 'text-white'); 
+                    b.classList.add('text-slate-400', 'hover:text-white'); 
+                });
+                const ab = document.getElementById(`pred-filter-${currentShotFilter}`); 
+                if (ab) { ab.classList.add('bg-sky-500', 'text-white'); ab.classList.remove('text-slate-400', 'hover:text-white'); }
+            })
+            .catch(err => {
+                console.error("Error updating predictions:", err);
+            });
     }
     async function openPlayer(pid) {
         const overlay = document.getElementById('modal-overlay');
@@ -1129,16 +1181,22 @@
         const data = playersCache[teamId];
         const currentPids = Array.from(document.querySelectorAll('.player-dot')).map(p => p.dataset.pid);
         
+        const targetPid = substituteTarget.dataset.pid;
+        const targetPlayer = data.find(dp => dp.id === targetPid);
+        const targetPos = targetPlayer ? targetPlayer.position : null;
+
         const normalizedQuery = q.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const filteredData = data.filter(p => {
             if (currentPids.includes(p.id)) return false;
-            if (!q) return false;
+            if (!q) {
+                return targetPos ? p.position === targetPos : true;
+            }
             const normalizedName = p.player_name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const shirtNumber = String(p.number || "");
             return normalizedName.includes(normalizedQuery) || shirtNumber === q;
         });
 
-        document.getElementById('subst-results').innerHTML = filteredData.slice(0, 8).map(p => `<div onclick="applySubstitution('${p.player_id}', '${p.last_name}', '${p.number}')" class="bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-sky-500 cursor-pointer flex justify-between"><span class="font-bold text-white">${p.player_name}</span><span class="text-slate-500 font-black">${p.position}</span></div>`).join('');
+        document.getElementById('subst-results').innerHTML = filteredData.slice(0, 8).map(p => `<div onclick="applySubstitution('${p.player_id}', '${p.last_name}', '${p.number}')" class="bg-slate-800 p-3 rounded-xl border border-slate-700 hover:border-sky-500 cursor-pointer flex justify-between"><span class="font-bold text-white">${p.player_name}</span><span class="text-slate-500 font-black">${p.position} ${!q ? `(${p.presences || 0} PJ)` : ''}</span></div>`).join('');
     }
 
     function applySubstitution(pid, name, number) {
@@ -1151,7 +1209,7 @@
     }
     document.addEventListener('contextmenu', e => { const p = e.target.closest('.player-dot'); if (p) { e.preventDefault(); lastCtxPid = p.dataset.pid; substituteTarget = p; document.getElementById('ctx-player-name').innerText = p.dataset.pname; const keyLabel = document.getElementById('ctx-key-label'); keyLabel.innerText = p.classList.contains('key-player') ? '❌ Quitar Marca' : '⭐ Marcar como Clave'; contextMenu.style.display = 'block'; contextMenu.style.left = e.clientX + 'px'; contextMenu.style.top = e.clientY + 'px'; } else contextMenu.style.display = 'none'; });
     document.addEventListener('click', e => { if (!e.target.closest('#context-menu')) contextMenu.style.display = 'none'; });
-    function handleCtxAction(act) { if (act === 'profile') openPlayer(lastCtxPid); else if (act === 'replace') document.getElementById('subst-modal-overlay').classList.remove('hidden'); else if (act === 'key') substituteTarget.classList.toggle('key-player'); contextMenu.style.display = 'none'; }
+    function handleCtxAction(act) { if (act === 'profile') openPlayer(lastCtxPid); else if (act === 'replace') { document.getElementById('subst-modal-overlay').classList.remove('hidden'); document.getElementById('subst-search').focus(); searchPlayers(''); } else if (act === 'key') substituteTarget.classList.toggle('key-player'); contextMenu.style.display = 'none'; }
     window.onload = () => { updateTeamRanking('home', '{{ match.id_home_team }}', 'tiradores'); updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores'); };
     function handleStart(e) {
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -1489,6 +1547,9 @@
                         <button data-type="fouls"
                             onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls', 'all', event)"
                             class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Faltas</button>
+                        <button data-type="fouls_rec"
+                            onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls_rec', 'all', event)"
+                            class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Faltas Rec.</button>
                         <button data-type="tackles"
                             onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'tackles', 'all', event)"
                             class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Entradas</button>
@@ -1498,9 +1559,6 @@
                         <button data-type="corners"
                             onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'corners', 'all', event)"
                             class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Corners</button>
-                        <button data-type="fouls_rec"
-                            onclick="updateTeamRanking('home', '{{ match.id_home_team }}', 'fouls_rec', 'all', event)"
-                            class="px-1.5 py-0.5 rounded h-rank-btn whitespace-nowrap">Faltas Rec.</button>
                     </div>
                     <div id="home-sub-filters"
                         class="sub-menu flex gap-1 justify-center text-[11px] bg-slate-800 text-slate-400 font-bold"
@@ -1882,6 +1940,9 @@
                         <button data-type="fouls"
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls', 'all', event)"
                             class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Faltas</button>
+                        <button data-type="fouls_rec"
+                            onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls_rec', 'all', event)"
+                            class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Faltas Rec.</button>
                         <button data-type="tackles"
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tackles', 'all', event)"
                             class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Entradas</button>
@@ -1891,12 +1952,10 @@
                         <button data-type="corners"
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'corners', 'all', event)"
                             class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Corners</button>
-                        <button data-type="fouls_rec"
-                            onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'fouls_rec', 'all', event)"
-                            class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Faltas Rec.</button>
                     </div>
                     <div id="away-sub-filters"
-                        class="sub-menu flex gap-1 justify-start text-[12px] bg-slate-800 text-white font-bold">
+                        class="sub-menu flex gap-1 justify-start text-[12px] bg-slate-800 text-white font-bold"
+                        style="display:none;">
                         <div class="flex gap-1">
                             <button onclick="toggleRankingL5('away', '{{ match.id_away_team }}')" id="v-l5-btn"
                                 class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700  text-slate-400 hover:text-white transition-all">Ultimos
@@ -1912,10 +1971,10 @@
                             class="px-1.5 py-0.5 rounded v-sub-btn bg-sky-500 text-white">Todos</button>
                         <button
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'target', event)"
-                            id="away-sub-target" class="px-1.5 py-0.5 rounded v-sub-btn">Arco</button>
+                            id="away-sub-target" class="px-1.5 py-0.5 rounded v-sub-btn bg-slate-800 text-slate-400">Arco</button>
                         <button
                             onclick="updateTeamRanking('away', '{{ match.id_away_team }}', 'tiradores', 'long', event)"
-                            id="away-sub-long" class="px-1.5 py-0.5 rounded v-sub-btn">Lejos</button>
+                            id="away-sub-long" class="px-1.5 py-0.5 rounded v-sub-btn bg-slate-800 text-slate-400">Lejos</button>
                         <div class="w-px h-3 bg-slate-700 mx-1 self-center sort-sep"></div>
                         <button onclick="toggleSort('away', '{{ match.id_away_team }}')" id="away-sort-btn"
                             class="px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 flex items-center gap-1 border border-slate-700">
@@ -2063,11 +2122,17 @@
 
 
     <!-- PANEL DE PREDICCIONES -->
-    <div class="flex justify-between items-end mb-4">
+    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-end mb-4 gap-4">
         <h2 class="text-xl font-black text-white uppercase italic tracking-tighter">Predicciones del Encuentro</h2>
-        <div class="flex bg-slate-900 rounded-xl p-1 border border-slate-800 gap-1">
-            <button onclick="updatePredictions(undefined, null)" id="pred-limit-all" class="pred-limit-btn px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg">Temporada</button>
-            <button onclick="updatePredictions(undefined, 5)" id="pred-limit-5" class="pred-limit-btn px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Ultimos 5</button>
+        <div class="flex gap-2">
+            <div class="flex bg-slate-900 rounded-xl p-1 border border-slate-800 gap-1">
+                <button onclick="updatePredictions(null, null, false)" id="pred-venue-all" class="pred-venue-btn px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg">General</button>
+                <button onclick="updatePredictions(null, null, true)" id="pred-venue-split" class="pred-venue-btn px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Local / Visita</button>
+            </div>
+            <div class="flex bg-slate-900 rounded-xl p-1 border border-slate-800 gap-1">
+                <button onclick="updatePredictions(null, -1, null)" id="pred-limit-all" class="pred-limit-btn px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all bg-sky-600 text-white shadow-lg">Temporada</button>
+                <button onclick="updatePredictions(null, 5, null)" id="pred-limit-5" class="pred-limit-btn px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all text-slate-400 hover:text-white">Ultimos 5</button>
+            </div>
         </div>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="prediction-section">
@@ -2078,7 +2143,10 @@
             ('shots', pred_s, 'Puntuacion de Tiros'),
             ('headers', pred_h, 'Puntuacion de Cabezazos'),
             ('cards', pred_c, 'Puntuacion de Tarjetas'),
-            ('fouls', pred_f, 'Puntuacion de Faltas')
+            ('fouls', pred_f, 'Puntuacion de Faltas'),
+            ('corners', pred_cor, 'Puntuacion de Corners'),
+            ('tackles', pred_t, 'Puntuacion de Entradas'),
+            ('offsides', pred_o, 'Puntuacion de Offsides')
             ] %}
             <div class="bg-slate-800/60 p-5 rounded-[2.5rem] border border-slate-700 shadow-xl">
                 <!--PREDICCION -->
@@ -2088,11 +2156,11 @@
                     {% if cat == 'shots' %}
                     <div class="flex gap-1 shrink-0 text-[9px]">
                         <button onclick="updatePredictions('all')" id="pred-filter-all"
-                            class="pred-filter-btn px-2 py-1 rounded-md uppercase font-bold border border-slate-700 bg-sky-500 text-white">Todos</button>
+                            class="pred-filter-btn px-2 py-1 rounded-md uppercase font-bold border border-slate-700 {% if current_filter == 'all' %}bg-sky-500 text-white{% else %}text-slate-400 hover:text-white{% endif %}">Todos</button>
                         <button onclick="updatePredictions('target')" id="pred-filter-target"
-                            class="pred-filter-btn px-2 py-1 rounded-md uppercase font-bold border border-slate-700 text-slate-400 hover:text-white">Arco</button>
+                            class="pred-filter-btn px-2 py-1 rounded-md uppercase font-bold border border-slate-700 {% if current_filter == 'target' %}bg-sky-500 text-white{% else %}text-slate-400 hover:text-white{% endif %}">Arco</button>
                         <button onclick="updatePredictions('long')" id="pred-filter-long"
-                            class="pred-filter-btn px-2 py-1 rounded-md uppercase font-bold border border-slate-700 text-slate-400 hover:text-white">Lejos</button>
+                            class="pred-filter-btn px-2 py-1 rounded-md uppercase font-bold border border-slate-700 {% if current_filter == 'long' %}bg-sky-500 text-white{% else %}text-slate-400 hover:text-white{% endif %}">Lejos</button>
                     </div>
                     {% endif %}
                 </div>

@@ -554,22 +554,34 @@
     }
 
     let heatmapDataCache = {};
+    let hmCurrentLimit = 10;
+    let hmFilters = { arco: false, cabeza: true, lejos: false, local: false };
 
     function loadHeatmap(limit, event) {
-        if (event) {
-            document.querySelectorAll('#heatmap-controls button').forEach(b => {
+        if (limit) hmCurrentLimit = limit;
+        else limit = hmCurrentLimit;
+        
+        if (event && event.target.classList.contains('hm-limit-btn')) {
+            document.querySelectorAll('.hm-limit-btn').forEach(b => {
                 b.classList.remove('bg-sky-600', 'text-white');
                 b.classList.add('text-slate-400');
             });
             event.target.classList.add('bg-sky-600', 'text-white');
             event.target.classList.remove('text-slate-400');
-        } else {
+        } else if (!event) {
             // Default visual state
-            document.getElementById('hm-btn-season').classList.add('bg-sky-600', 'text-white');
-            document.getElementById('hm-btn-l5').classList.remove('bg-sky-600', 'text-white');
+            const sBtn = document.getElementById('hm-btn-season');
+            const l5Btn = document.getElementById('hm-btn-l5');
+            if (sBtn) { sBtn.classList.add('bg-sky-600', 'text-white'); sBtn.classList.remove('text-slate-400'); }
+            if (l5Btn) { l5Btn.classList.remove('bg-sky-600', 'text-white'); l5Btn.classList.add('text-slate-400'); }
         }
 
-        const url = `/api/match_heatmap/{{ match.id }}${limit ? '?limit=5' : ''}`;
+        const only_arco = hmFilters.arco ? '1' : '0';
+        const hide_cabeza = hmFilters.cabeza ? '0' : '1';
+        const only_lejos = hmFilters.lejos ? '1' : '0';
+        const only_home_away = hmFilters.local ? '1' : '0';
+
+        const url = `/api/match_heatmap/{{ match.id }}?limit=${limit}&only_arco=${only_arco}&hide_cabeza=${hide_cabeza}&only_lejos=${only_lejos}&only_home_away=${only_home_away}`;
         document.getElementById('hm-label-top').style.display = 'flex';
         document.getElementById('hm-label-bottom').style.display = 'flex';
 
@@ -578,12 +590,32 @@
         });
     }
 
+    function toggleHmFilter(filterName, event) {
+        hmFilters[filterName] = !hmFilters[filterName];
+        
+        if (event) {
+            if (hmFilters[filterName]) {
+                event.target.classList.remove('text-slate-500', 'border-slate-700/50', 'bg-transparent', 'hover:text-white');
+                event.target.classList.add('bg-slate-800', 'text-sky-400', 'border-sky-500/50');
+            } else {
+                event.target.classList.add('text-slate-500', 'border-slate-700/50', 'bg-transparent', 'hover:text-white');
+                event.target.classList.remove('bg-slate-800', 'text-sky-400', 'border-sky-500/50');
+            }
+        }
+        
+        loadHeatmap(hmCurrentLimit, null);
+    }
+
     function drawHeatmap(data, limit) {
         const canvas = document.getElementById('heatmap-canvas');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         const w = canvas.width, h = canvas.height;
         ctx.clearRect(0, 0, w, h);
+
+        // --- CONFIGURACION DE LA ZONA INTERACTIVA ---
+        // Puedes ajustar este valor para hacer la zona de deteccion de tiros mas chica o mas grande (Ej: 2, 3, 4)
+        const INTERACTION_RADIUS = 4; 
 
         // 1. Analisis de Volumen para ajuste Dinamico
         const totalShots = data.home_made.length + data.away_received.length +
@@ -681,6 +713,107 @@
             }
         }
         ctx.putImageData(imgData, 0, 0);
+
+        heatmapDataCache = {
+            limit: limit, scaleX: scaleX, scaleY: scaleY, radius: INTERACTION_RADIUS,
+            shots: [
+                ...(data.home_made || []).map(s => ({...s, gx: 67 - s.x, gy: 105 - s.y, channel: 1, team: 'home'})),
+                ...(data.away_received || []).map(s => ({...s, gx: 67 - s.x, gy: 105 - s.y, channel: 0, team: 'away'})),
+                ...(data.away_made || []).map(s => ({...s, gx: s.x, gy: s.y, channel: 1, team: 'away'})),
+                ...(data.home_received || []).map(s => ({...s, gx: s.x, gy: s.y, channel: 0, team: 'home'}))
+            ]
+        };
+
+        if (!canvas.dataset.hoverAttached) {
+            canvas.dataset.hoverAttached = "true";
+            canvas.addEventListener("mousemove", (e) => {
+                const cache = heatmapDataCache;
+                if (!cache || !cache.shots) return;
+                const rect = canvas.getBoundingClientRect();
+                const hoverGx = (e.clientX - rect.left) / cache.scaleX;
+                const hoverGy = (e.clientY - rect.top) / cache.scaleY;
+                const threshold = cache.radius; 
+                
+                let playerCounts = {};
+                cache.shots.forEach(s => {
+                    // Only process 'made' shots (channel 1) to show the team that is actually shooting
+                    if (s.channel !== 1) return;
+                    
+                    const dx = s.gx - hoverGx;
+                    const dy = s.gy - hoverGy;
+                    if (dx * dx + dy * dy < threshold * threshold) {
+                        const name = s.player_name || 'Desconocido';
+                        const number = s.number ? `#${s.number} ` : '';
+                        const fullName = `${number}${name}`.trim();
+                        const pid = s.player_id || fullName;
+                        
+                        if (!playerCounts[pid]) {
+                            playerCounts[pid] = { name: fullName, count: 0, channel: s.channel };
+                        }
+                        playerCounts[pid].count++;
+                    }
+                });
+                
+                let tooltipContent = Object.values(playerCounts).map(data => {
+                    return { name: data.name, count: data.count, channel: data.channel };
+                });
+                tooltipContent.sort((a, b) => b.count - a.count);
+                
+                let tooltip = document.getElementById('heatmap-tooltip');
+                if (!tooltip) {
+                    tooltip = document.createElement('div');
+                    tooltip.id = 'heatmap-tooltip';
+                    tooltip.className = 'fixed bg-slate-900 border border-slate-700 rounded-xl p-3 z-[5000] pointer-events-none shadow-2xl text-white text-[11px] whitespace-nowrap flex flex-col gap-1 transition-opacity duration-200';
+                    document.body.appendChild(tooltip);
+                }
+
+                let ring = document.getElementById('heatmap-hover-ring');
+                if (!ring) {
+                    ring = document.createElement('div');
+                    ring.id = 'heatmap-hover-ring';
+                    ring.className = 'absolute rounded-full border border-sky-400/80 bg-sky-400/20 pointer-events-none z-[100] transition-opacity duration-75';
+                    canvas.parentElement.appendChild(ring);
+                }
+                
+                if (tooltipContent.length > 0) {
+                    const radiusPx = threshold * cache.scaleX; // Assuming uniform scaling approx
+                    const offsetX = e.clientX - rect.left;
+                    const offsetY = e.clientY - rect.top;
+                    
+                    ring.style.width = (radiusPx * 2) + 'px';
+                    ring.style.height = (radiusPx * 2) + 'px';
+                    ring.style.left = (offsetX - radiusPx) + 'px';
+                    ring.style.top = (offsetY - radiusPx) + 'px';
+                    ring.style.opacity = '1';
+                    ring.style.display = 'block';
+
+                    tooltip.innerHTML = '<div class="text-sky-400 font-black mb-1 uppercase tracking-widest text-[9px] border-b border-slate-700 pb-1">Tiradores en la zona</div>' + 
+                        tooltipContent.map(d => `<div class="flex justify-between items-center gap-6"><div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full ${d.channel === 1 ? 'bg-yellow-400' : 'bg-cyan-400'}"></div><span class="font-bold">${d.name}</span></div><span class="text-sky-400 font-black text-[10px]">${d.count} ${d.count === 1 ? 'tiro' : 'tiros'}</span></div>`).join('');
+                    tooltip.style.left = (e.clientX + 15) + 'px';
+                    tooltip.style.top = (e.clientY + 15) + 'px';
+                    tooltip.style.opacity = '1';
+                    tooltip.style.display = 'block';
+                } else {
+                    tooltip.style.opacity = '0';
+                    tooltip.style.display = 'none';
+                    ring.style.opacity = '0';
+                    ring.style.display = 'none';
+                }
+            });
+            
+            canvas.addEventListener("mouseleave", () => {
+                const tooltip = document.getElementById('heatmap-tooltip');
+                if (tooltip) {
+                    tooltip.style.opacity = '0';
+                    tooltip.style.display = 'none';
+                }
+                const ring = document.getElementById('heatmap-hover-ring');
+                if (ring) {
+                    ring.style.opacity = '0';
+                    ring.style.display = 'none';
+                }
+            });
+        }
     }
 
     function switchPitchView(view) {
@@ -702,7 +835,7 @@
         // Reset UI
         lineupLayer.style.opacity = '0'; lineupLayer.style.pointerEvents = 'none';
         if (shotmapLayer) { shotmapLayer.style.opacity = '0'; shotmapLayer.style.pointerEvents = 'none'; }
-        if (heatmapLayer) { heatmapLayer.style.opacity = '0'; }
+        if (heatmapLayer) { heatmapLayer.style.opacity = '0'; heatmapLayer.style.pointerEvents = 'none'; }
         if (heatmapControls) heatmapControls.style.display = 'none';
         if (hmLabelTop) hmLabelTop.style.display = 'none';
         if (hmLabelBottom) hmLabelBottom.style.display = 'none';
@@ -733,7 +866,7 @@
             if (controls) controls.style.display = 'none';
             if (legend) { legend.classList.remove('hidden'); legend.classList.add('flex'); }
         } else if (view === 'heatmap') {
-            if (heatmapLayer) { heatmapLayer.style.opacity = '1'; }
+            if (heatmapLayer) { heatmapLayer.style.opacity = '1'; heatmapLayer.style.pointerEvents = 'auto'; }
             if (btnHeatmap) {
                 btnHeatmap.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
                 btnHeatmap.classList.remove('text-slate-400', 'hover:text-white');
@@ -746,7 +879,7 @@
             if (legend) legend.classList.add('hidden');
 
             // Trigger load if empty
-            loadHeatmap(false);
+            loadHeatmap(10);
         }
     }
 
@@ -997,68 +1130,295 @@
         content.innerHTML = '<div class="text-center p-20 animate-pulse font-black text-sky-500">CARGANDO PERFIL...</div>';
 
         const r = await fetch(`/player_info/${pid}/{{ match.id }}`);
+        if (!r.ok) {
+            content.innerHTML = `
+                <div class="flex justify-end p-4 pb-0">
+                    <button onclick="closeModal()" class="text-slate-500 hover:text-white transition-colors text-2xl">✕</button>
+                </div>
+                <div class="text-center p-20 font-black text-slate-500 flex flex-col items-center gap-4">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-slate-600">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    NO HAY REGISTROS DEL JUGADOR
+                    <span class="text-xs font-normal text-slate-600 max-w-sm mt-2">El jugador no ha sumado minutos oficiales en los equipos o competiciones registrados.</span>
+                </div>
+            `;
+            return;
+        }
         const d = await r.json();
 
         window.currentRankings = d.rankings_top;
         window.currentPlayerData = d.stats;
         window.playerL5Details = d.last_5_details;
+        window.playerL10Details = d.last_10_details;
         window.playerTeamId = d.team_id;
+        window.playerShots = d.shots || [];
+        window.activePlayerTeams = d.teams_history ? [...d.teams_history] : [];
+        window.currentPid = pid;
 
         content.innerHTML = `
                 <div class="flex justify-between items-end border-b border-slate-700 pb-2 mb-3 shrink-0">
                     <div>
                         <h2 class="text-5xl font-black italic uppercase text-white leading-none">#${d.number || 'S/N'} ${d.name}</h2>
-                        <p class="text-sky-400 font-bold uppercase tracking-widest mt-3 text-lg">
+                        <p class="text-sky-400 font-bold uppercase tracking-widest mt-1 text-sm">
                             ${d.team} | ${d.pos} | <span class="text-white">${d.age} años</span>
                         </p>
-                        <div class="flex gap-2 mt-3 flex-wrap">
-                            ${d.teams_history ? d.teams_history.map(tid => `<a href="/team/${tid}"><img src="/static/${tid}_xsmall.png" onerror="this.style.display='none'" class="w-8 h-8 object-contain bg-slate-800 rounded-lg p-1 border border-slate-700 hover:border-sky-500 transition-colors" title="Team ${tid}"></a>`).join('') : ''}
+                        <div class="flex gap-1 mt-1 flex-wrap">
+                            ${d.teams_history ? d.teams_history.map(tid => `<button onclick="togglePlayerTeamStats('${tid}', '${pid}', '{{ match.id }}')" class="transition-transform hover:scale-110"><img id="team-filter-img-${tid}" src="/static/${tid}_xsmall.png" onerror="this.style.display='none'" class="w-6 h-6 object-contain bg-slate-800 rounded-md p-0.5 border border-sky-500 shadow-[0_0_5px_rgba(14,165,233,0.5)] transition-all" title="Filtrar por Equipo"></button>`).join('') : ''}
                         </div>
                     </div>
-                    <button onclick="closeModal()" class="self-start text-slate-500 hover:text-white transition-colors text-3xl p-2">✕</button>
+                    <button onclick="closeModal()" class="self-start text-slate-500 hover:text-white transition-colors text-2xl p-1">✕</button>
                 </div>
 
-                <div class="grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden mb-4">
+                <div class="flex gap-2 mb-3 bg-slate-900/50 p-1.5 rounded-2xl border border-slate-800 shrink-0">
+                    <button onclick="switchPlayerMainTab('stats')" id="main-tab-btn-stats" class="flex-1 py-2 text-xs font-black uppercase rounded-xl transition-all bg-sky-600 text-white">Estadisticas</button>
+                    <button onclick="switchPlayerMainTab('shotmap')" id="main-tab-btn-shotmap" class="flex-1 py-2 text-xs font-black uppercase rounded-xl transition-all text-slate-500 hover:text-white hover:bg-slate-800">Mapa de Tiros</button>
+                    <button onclick="switchPlayerMainTab('rankings')" id="main-tab-btn-rankings" class="flex-1 py-2 text-xs font-black uppercase rounded-xl transition-all text-slate-500 hover:text-white hover:bg-slate-800">Rankings</button>
+                </div>
+
+                <div class="flex-1 min-h-0 relative overflow-hidden">
                     
-                    <div class="col-span-4 bg-slate-900/50 rounded-[2.5rem] border border-slate-800 p-6 flex flex-col min-h-0 shadow-inner">
-                        <div class="flex gap-2 mb-4 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shrink-0">
-                            <button onclick="switchPlayerTab('gen')" id="tab-btn-gen" class="flex-1 py-2 text-[11px] font-black uppercase rounded-xl transition-all bg-sky-600 text-white">General</button>
-                            <button onclick="switchPlayerTab('l5')" id="tab-btn-l5" class="flex-1 py-2 text-[11px] font-black uppercase rounded-xl transition-all text-slate-500">Ultimos 5</button>
-                            <button onclick="switchPlayerTab('part')" id="tab-btn-part" class="flex-1 py-2 text-[11px] font-black uppercase rounded-xl transition-all text-slate-500">Partido</button>
+                    <!-- Tab 1: Stats & Notes -->
+                    <div id="main-tab-stats" class="absolute inset-0 flex flex-col md:flex-row gap-4 overflow-hidden">
+                        <div class="w-full md:w-1/2 bg-slate-900/50 rounded-[2rem] border border-slate-800 p-4 flex flex-col min-h-0 shadow-inner">
+                            <div class="flex gap-1 mb-3 bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
+                                <button onclick="switchPlayerTab('gen')" id="tab-btn-gen" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all bg-sky-600 text-white">General</button>
+                                <button onclick="switchPlayerTab('l10')" id="tab-btn-l10" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all text-slate-500">Ultimos 10</button>
+                                <button onclick="switchPlayerTab('l5')" id="tab-btn-l5" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all text-slate-500">Ultimos 5</button>
+                                <button onclick="switchPlayerTab('part')" id="tab-btn-part" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all text-slate-500">Partido</button>
+                            </div>
+                            <div id="player-stats-content" class="space-y-1 overflow-y-auto flex-1 custom-blue-scroll no-scrollbar pr-1">
+                                ${renderStatRows(d.stats.general)}
+                            </div>
+                            <div id="player-modal-rival-context" class="hidden justify-center items-center gap-3 mt-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex-wrap min-h-[4rem]"></div>
                         </div>
-                        <div id="player-stats-content" class="space-y-2 overflow-y-auto flex-1 custom-blue-scroll no-scrollbar pr-2">
-                            ${renderStatRows(d.stats.general)}
+
+                        <div class="w-full md:w-1/2 flex flex-col min-h-0">
+                            <div class="notes-section bg-slate-900/50 rounded-[2rem] border border-slate-800 p-4 shadow-inner flex-1 flex flex-col min-h-0">
+                                <div class="flex justify-between items-center mb-2 px-1 shrink-0">
+                                    <h4 class="text-[11px] font-black text-sky-500 uppercase tracking-[0.2em]">Notas de Scouting</h4>
+                                    <button onclick="savePlayerNote('${pid}')" class="text-[9px] bg-sky-600 hover:bg-sky-500 text-white px-3 py-1 rounded-lg font-black uppercase transition-all shadow-lg">Guardar</button>
+                                </div>
+                                <textarea id="p-note-area" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-base text-slate-300 outline-none focus:border-sky-500 transition-all flex-1 resize-none shadow-inner">${d.notes || ''}</textarea>
+                            </div>
                         </div>
-                        <div id="player-modal-rival-context" class="hidden justify-center items-center gap-5 mb-4 bg-slate-900 p-2 rounded-xl border border-slate-800 flex-wrap"></div>
                     </div>
 
-                    <div class="col-span-8 flex flex-col gap-6 min-h-0">
-                        
-                        <div class="bg-slate-900/50 rounded-[2.5rem] border border-slate-800 p-6 flex flex-col flex-1 min-h-0 shadow-inner overflow-hidden">
-                            <div class="flex justify-between items-center mb-6 shrink-0">
-                                <h4 class="text-[12px] font-black text-sky-500 uppercase tracking-[0.2em]">Rankings (Top 20)</h4>
-                                <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                                    <button onclick="renderRankScope('liga')" id="rank-scope-liga" class="px-4 py-1 text-[10px] font-black uppercase rounded-lg bg-sky-600 text-white transition-all">Liga</button>
-                                    <button onclick="renderRankScope('equipo')" id="rank-scope-equipo" class="px-4 py-1 text-[10px] font-black uppercase rounded-lg text-slate-500 transition-all">Equipo</button>
-                                    <button onclick="renderRankScope('posicion')" id="rank-scope-posicion" class="px-4 py-1 text-[10px] font-black uppercase rounded-lg text-slate-500 transition-all">Posicion</button>
-                                </div>
+                    <!-- Tab 2: Shot Map -->
+                    <div id="main-tab-shotmap" class="absolute inset-0 hidden flex-col min-h-0 bg-slate-900/50 rounded-[2rem] border border-slate-800 p-4 shadow-inner">
+                        <div class="flex justify-center mb-3 shrink-0">
+                            <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                <button onclick="filterShotMap('all')" id="sm-btn-all" class="px-4 py-1.5 text-[10px] font-black uppercase rounded-lg bg-sky-600 text-white transition-all">Temp.</button>
+                                <button onclick="filterShotMap('l10')" id="sm-btn-l10" class="px-4 py-1.5 text-[10px] font-black uppercase rounded-lg text-slate-500 hover:text-white transition-all">Ult 10</button>
+                                <button onclick="filterShotMap('l5')" id="sm-btn-l5" class="px-4 py-1.5 text-[10px] font-black uppercase rounded-lg text-slate-500 hover:text-white transition-all">Ult 5</button>
                             </div>
-                            
-                            <div id="rankings-list-container" class="overflow-y-auto flex-1 custom-blue-scroll pr-4 grid grid-cols-2 gap-4 content-start">
-                                </div>
                         </div>
-
-                        <div class="notes-section bg-slate-900/50 rounded-[2.5rem] border border-slate-800 p-6 pt-4 shadow-inner">
-                            <div class="flex justify-between items-center mb-4 px-2">
-                                <h4 class="text-[12px] font-black text-sky-500 uppercase tracking-[0.2em]">Notas de Scouting</h4>
-                                <button onclick="savePlayerNote('${pid}')" class="text-[10px] bg-sky-600 hover:bg-sky-500 text-white px-4 py-1.5 rounded-xl font-black uppercase transition-all shadow-lg">Guardar</button>
+                        <div class="flex-1 relative bg-[#1a4d2e] rounded-xl border border-white/20 mx-auto aspect-[105/67] w-full max-w-[600px] my-auto" style="background-image: linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0.8)), linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0.8)), radial-gradient(circle at 50% 50%, transparent 14%, rgba(255,255,255,0.2) 14.5%, rgba(255,255,255,0.2) 15.5%, transparent 16%), linear-gradient(to right, transparent 49.5%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 50.5%, transparent 51%); background-size: 2px 25%, 2px 25%, 100% 100%, 100% 100%; background-position: left center, right center, center, center; background-repeat: no-repeat;">
+                            <div class="absolute left-0 top-[20%] w-[15%] h-[60%] border-2 border-white/20 border-l-0"></div>
+                            <div class="absolute right-0 top-[20%] w-[15%] h-[60%] border-2 border-white/20 border-r-0"></div>
+                            <div id="player-shotmap-container" class="absolute inset-0 w-full h-full pointer-events-auto">
+                                ${renderPlayerShots(d.shots, 'all')}
                             </div>
-                            <textarea id="p-note-area" class="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-slate-300 outline-none focus:border-sky-500 transition-all h-20 resize-none shadow-inner">${d.notes || ''}</textarea>
+                        </div>
+                        <div class="flex justify-center gap-4 mt-4 text-xs uppercase font-bold text-slate-400 shrink-0">
+                            <span class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-yellow-400"></div>Gol</span>
+                            <span class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-emerald-500"></div>Al Arco</span>
+                            <span class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-red-500"></div>Afuera / Bloq.</span>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: Rankings -->
+                    <div id="main-tab-rankings" class="absolute inset-0 hidden flex-col min-h-0 bg-slate-900/50 rounded-[2rem] border border-slate-800 p-4 shadow-inner">
+                        <div class="flex justify-between items-center mb-4 shrink-0">
+                            <h4 class="text-xs font-black text-sky-500 uppercase tracking-[0.2em]">Rankings (Top 20)</h4>
+                            <div class="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+                                <button onclick="renderRankScope('liga')" id="rank-scope-liga" class="px-3 py-1 text-[10px] font-black uppercase rounded-md bg-sky-600 text-white transition-all">Liga</button>
+                                <button onclick="renderRankScope('equipo')" id="rank-scope-equipo" class="px-3 py-1 text-[10px] font-black uppercase rounded-md text-slate-500 transition-all">Equipo</button>
+                                <button onclick="renderRankScope('posicion')" id="rank-scope-posicion" class="px-3 py-1 text-[10px] font-black uppercase rounded-md text-slate-500 transition-all">Posicion</button>
+                            </div>
+                        </div>
+                        <div id="rankings-list-container" class="overflow-y-auto flex-1 custom-blue-scroll pr-2 grid grid-cols-2 md:grid-cols-3 gap-3 content-start">
                         </div>
                     </div>
                 </div>
             `;
         renderRankScope('liga');
+    }
+
+    function switchPlayerMainTab(tab) {
+        ['stats', 'shotmap', 'rankings'].forEach(t => {
+            const btn = document.getElementById(`main-tab-btn-${t}`);
+            const content = document.getElementById(`main-tab-${t}`);
+            if (btn && content) {
+                if (t === tab) {
+                    btn.classList.add('bg-sky-600', 'text-white');
+                    btn.classList.remove('text-slate-500', 'hover:text-white', 'hover:bg-slate-800');
+                    content.classList.remove('hidden');
+                    if (t === 'stats') content.classList.add('flex'); // Add flex to stats tab when shown
+                } else {
+                    btn.classList.remove('bg-sky-600', 'text-white');
+                    btn.classList.add('text-slate-500', 'hover:text-white', 'hover:bg-slate-800');
+                    content.classList.add('hidden');
+                    content.classList.remove('flex');
+                }
+            }
+        });
+    }
+
+    async function updatePlayerModalData(pid, matchId) {
+        const teamsQuery = window.activePlayerTeams && window.activePlayerTeams.length > 0 
+            ? `?teams=${window.activePlayerTeams.join(',')}` 
+            : '';
+        const r = await fetch(`/player_info/${pid}/${matchId}${teamsQuery}`);
+        if (!r.ok) return;
+        const d = await r.json();
+
+        window.currentRankings = d.rankings_top;
+        window.currentPlayerData = d.stats;
+        window.playerL5Details = d.last_5_details;
+        window.playerL10Details = d.last_10_details;
+        window.playerTeamId = d.team_id;
+        window.playerShots = d.shots || [];
+        
+        // Update stats
+        const activeTab = document.querySelector('#main-tab-stats .bg-sky-600');
+        if(activeTab) switchPlayerTab(activeTab.id.replace('tab-btn-', ''));
+        
+        // Update rankings
+        const activeRankScope = document.querySelector('#rank-scope-liga').classList.contains('bg-sky-600') ? 'liga' : 
+                                document.querySelector('#rank-scope-equipo').classList.contains('bg-sky-600') ? 'equipo' : 'posicion';
+        renderRankScope(activeRankScope);
+        
+        // Update shot map
+        const activeShotMapBtn = document.querySelector('#main-tab-shotmap .bg-sky-600');
+        let filter = 'all';
+        if (activeShotMapBtn) {
+            filter = activeShotMapBtn.id.replace('sm-btn-', '');
+            if(filter === 'stats' || filter === 'shotmap' || filter === 'rankings') filter = 'all'; // Fallback
+        }
+        filterShotMap(filter);
+    }
+
+    async function togglePlayerTeamStats(tid, pid, matchId) {
+        if (!window.activePlayerTeams) return;
+        const img = document.getElementById(`team-filter-img-${tid}`);
+        
+        if (window.activePlayerTeams.includes(tid)) {
+            if (window.activePlayerTeams.length === 1) return; // Can't disable last one
+            window.activePlayerTeams = window.activePlayerTeams.filter(t => t !== tid);
+            if (img) {
+                img.classList.add('opacity-30', 'grayscale');
+                img.classList.remove('border-sky-500', 'shadow-[0_0_5px_rgba(14,165,233,0.5)]');
+                img.classList.add('border-slate-700');
+            }
+        } else {
+            window.activePlayerTeams.push(tid);
+            if (img) {
+                img.classList.remove('opacity-30', 'grayscale', 'border-slate-700');
+                img.classList.add('border-sky-500', 'shadow-[0_0_5px_rgba(14,165,233,0.5)]');
+            }
+        }
+        
+        await updatePlayerModalData(pid, matchId);
+    }
+
+    function filterShotMap(filter) {
+        ['all', 'l10', 'l5'].forEach(f => {
+            const btn = document.getElementById(`sm-btn-${f}`);
+            if (btn) {
+                if (f === filter) {
+                    btn.classList.add('bg-sky-600', 'text-white');
+                    btn.classList.remove('text-slate-500', 'hover:text-white');
+                } else {
+                    btn.classList.remove('bg-sky-600', 'text-white');
+                    btn.classList.add('text-slate-500', 'hover:text-white');
+                }
+            }
+        });
+        const container = document.getElementById('player-shotmap-container');
+        if (container) {
+            container.innerHTML = renderPlayerShots(window.playerShots, filter);
+        }
+    }
+
+    function renderPlayerShots(shots, filter = 'all') {
+        if (!shots || shots.length === 0) return '';
+
+        let filteredShots = shots;
+        if (filter !== 'all') {
+            const uniqueMatches = [...new Set(shots.map(s => s.match_id))];
+            const allowedMatches = filter === 'l5' ? uniqueMatches.slice(0, 5) : uniqueMatches.slice(0, 10);
+            filteredShots = shots.filter(s => allowedMatches.includes(s.match_id));
+        }
+
+        let html = '<svg class="absolute inset-0 w-full h-full pointer-events-none" style="z-index: 5;">';
+        let dots = '';
+
+        filteredShots.forEach((s, idx) => {
+            let top_pct = (s.x / 67) * 100;
+            let left_pct = 100 - (s.y / 105) * 100; // Shots appear on the left half (0-50%)
+            
+            // goal_cross_x in JS is goal_cross_y from DB (the short axis, 0-67)
+            let cy_pct = (s.goal_cross_x / 67) * 100;
+            let cx_pct = 0; // Attacking the left goal (0%)
+            
+            if (s.is_blocked) {
+                cy_pct = (s.blocked_x / 67) * 100;
+                cx_pct = 100 - (s.blocked_y / 105) * 100;
+            } else if (!s.goal_cross_x) {
+                // If no cross data, assume middle of goal
+                cy_pct = 50;
+            }
+            
+            let dot_color = 'bg-red-500';
+            let line_color = 'rgba(239, 68, 68, 0.5)';
+            let z_idx = '10';
+            let outcomeText = 'Errado';
+            
+            if (s.outcome === 'Goal') { 
+                dot_color = 'bg-yellow-400 shadow-[0_0_5px_rgba(250,204,21,0.8)]'; 
+                line_color = 'rgba(250, 204, 21, 0.8)';
+                z_idx = '20'; 
+                outcomeText = 'Gol'
+            }
+            else if (s.on_target) { 
+                dot_color = 'bg-emerald-500'; 
+                line_color = 'rgba(16, 185, 129, 0.6)';
+                z_idx = '15'; 
+                outcomeText = 'Atajado'
+            }
+            else if (s.is_blocked) { 
+                dot_color = 'bg-slate-500'; 
+                line_color = 'rgba(148, 163, 184, 0.5)';
+                z_idx = '5'; 
+                outcomeText = 'Bloqueado'
+            }
+            
+            let size = s.outcome === 'Goal' ? 'w-3 h-3' : 'w-2.5 h-2.5';
+            let lineId = `pm-line-${idx}`;
+            
+            const sitText = s.situation || '';
+
+            // Trajectory Line
+            html += `<line id="${lineId}" class="transition-opacity duration-200 opacity-0" x1="${left_pct}%" y1="${top_pct}%" x2="${cx_pct}%" y2="${cy_pct}%" stroke="${line_color}" stroke-width="2.5" stroke-dasharray="${(!s.on_target && !s.is_blocked) ? '4 2' : 'none'}" />`;
+
+            // Dot
+            dots += `<div class="absolute ${size} rounded-full ${dot_color} transform -translate-x-1/2 -translate-y-1/2 border border-white/80 hover:scale-125 transition-transform cursor-pointer group" style="top: ${top_pct}%; left: ${left_pct}%; z-index: ${z_idx};"
+            onmouseenter="document.getElementById('${lineId}').style.opacity='1'; this.style.zIndex='50';"
+            onmouseleave="document.getElementById('${lineId}').style.opacity='0'; this.style.zIndex='${z_idx}';">
+                <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 bg-slate-950 text-white text-[10px] font-bold px-2 py-1.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-50 border border-slate-700 shadow-xl flex flex-col items-center leading-tight">
+                    <span class="text-[9px] font-black ${s.is_home ? 'text-green-500' : 'text-yellow-500'} mb-0.5">${s.is_home ? 'L' : 'V'}</span>
+                    <img src="/static/${s.rival_id || 'none'}_xsmall.png" onerror="this.src='/static/none.png'" class="w-5 h-5 object-contain mb-0.5" title="${s.rival || 'Rival'}">
+                    <span>${s.minute}' - <span class="${s.outcome === 'Goal' ? 'text-yellow-400' : 'text-white'}">${outcomeText}</span></span>
+                    <span class="text-slate-400 text-[8px] font-normal italic mt-0.5">${sitText}</span>
+                </div>
+            </div>`;
+        });
+        
+        html += '</svg>' + dots;
+        return html;
     }
 
     function renderRankScope(scope) {
@@ -1069,18 +1429,18 @@
         ['liga', 'equipo', 'posicion'].forEach(s => {
             const btn = document.getElementById(`rank-scope-${s}`);
             btn.className = (s === scope)
-                ? "px-4 py-1 text-[10px] font-black uppercase rounded-lg bg-sky-600 text-white shadow-lg transition-all"
-                : "px-4 py-1 text-[10px] font-black uppercase rounded-lg text-slate-500 hover:text-white transition-all";
+                ? "px-3 py-1 text-[10px] font-black uppercase rounded-md bg-sky-600 text-white shadow-lg transition-all"
+                : "px-3 py-1 text-[10px] font-black uppercase rounded-md text-slate-500 hover:text-white transition-all";
         });
 
         if (data.length === 0) {
-            container.innerHTML = `<div class="col-span-2 text-center py-10 text-slate-600 italic text-sm">El jugador no figura en el Top 20 de ninguna estadistica en este ambito.</div>`;
+            container.innerHTML = `<div class="col-span-2 text-center py-10 text-slate-600 italic text-xs">El jugador no figura en el Top 20 de ninguna estadistica en este ambito.</div>`;
             return;
         }
 
         container.innerHTML = data.map(r => `
-                    <div class="rank-badge h-24 shrink-0"> <div class="flex flex-col justify-center">
-                            <span class="text-[12px] text-slate-300 font-black uppercase tracking-tighter">${r.label}</span>
+                    <div class="rank-badge h-16 shrink-0 p-2 rounded-xl border border-slate-800 bg-slate-900/80"> <div class="flex flex-col justify-center">
+                            <span class="text-[11px] text-slate-300 font-black uppercase tracking-tighter">${r.label}</span>
                             <span class="text-white font-bold text-sm">${r.total} <small class="text-slate-600 font-normal italic">acum.</small></span>
                         </div>
                         <div class="text-right">
@@ -1093,31 +1453,84 @@
     function renderStatRows(data) {
         const labels = [
             ['Tiros Totales', 'shots'], ['Al Arco', 'target'], ['De Lejos', 'long'],
-            ['Cabezazos', 'headers'], ['Tarjetas', 'cards'], ['Faltas Cometidas', 'f_c'],
+            ['Cabezazos', 'headers'], ['Entradas', 'tackles'], ['Corners', 'corners'], 
+            ['Offsides', 'offsides'], ['Tarjetas', 'cards'], ['Faltas Cometidas', 'f_c'],
             ['Faltas Recibidas', 'f_r'], ['Minutos', 'mins'], ['Partidos', 'pj']
         ];
         return labels.map(l => `
-                <div class="flex justify-between items-center p-1 rounded-lg hover:bg-slate-800/50 transition-colors">
-                    <span class="text-[11px] font-bold text-slate-400 uppercase">${l[0]}</span>
+                <div class="flex justify-between items-center px-2 py-0.5 rounded-md hover:bg-slate-800/50 transition-colors cursor-pointer group"
+                     onmouseenter="handleStatHover('${l[1]}')" onmouseleave="handleStatLeave()">
+                    <span class="text-[11px] font-bold text-slate-400 uppercase group-hover:text-sky-400 transition-colors">${l[0]}</span>
                     <span class="text-sm font-black text-white">${data[l[1]] || 0}</span>
                 </div>
             `).join('');
     }
 
+    function handleStatHover(statKey) {
+        const rivalContext = document.getElementById('player-modal-rival-context');
+        const activeBtn = document.querySelector('#main-tab-stats .bg-sky-600');
+        if(!activeBtn) return;
+        const activeTab = activeBtn.id.replace('tab-btn-', '');
+        
+        if (activeTab === 'gen') return;
+
+        let details = [];
+        if (activeTab === 'l5') details = window.playerL5Details;
+        if (activeTab === 'l10') details = window.playerL10Details;
+        if (activeTab === 'part') {
+            const homeId = "{{ match.id_home_team }}";
+            const awayId = "{{ match.id_away_team }}";
+            let rivalId = (String(window.playerTeamId) === String(homeId)) ? awayId : homeId;
+            let cond = (String(window.playerTeamId) === String(homeId)) ? 'L' : 'V';
+            let matchId = (String(window.playerTeamId) === String(homeId)) ? homeMatchId : awayMatchId;
+            // The match stat breakdown is in window.currentPlayerData['partido']
+            details = [{
+                match_id: matchId, 
+                rival_id: rivalId, 
+                cond: cond, 
+                match_stats: window.currentPlayerData['partido']
+            }];
+        }
+
+        if (details && details.length > 0 && rivalContext) {
+            let logosHtml = details.map(m => {
+                const statVal = m.match_stats ? (m.match_stats[statKey] || 0) : 0;
+                return `
+                    <div class="flex flex-col items-center">
+                        <span class="text-[9px] font-black ${m.cond === 'L' ? 'text-green-500' : 'text-yellow-500'}">${m.cond}</span>
+                        <a href="/match/${m.match_id}"><img src="/static/${m.rival_id || 'none'}_xsmall.png" onerror="this.src='/static/none.png'" class="w-6 h-6 object-contain hover:scale-110 transition-transform" title="${m.rival || 'Rival'}"></a>
+                        <span class="text-[11px] font-black ${statVal > 0 ? 'text-sky-400' : 'text-slate-600'}">${statVal}</span>
+                    </div>
+                `;
+            }).join('');
+            rivalContext.innerHTML = logosHtml;
+        }
+    }
+
+    function handleStatLeave() {
+        const activeBtn = document.querySelector('#main-tab-stats .bg-sky-600');
+        if(!activeBtn) return;
+        const activeTab = activeBtn.id.replace('tab-btn-', '');
+        switchPlayerTab(activeTab); // Restaura los logos vacios originales
+    }
+
     function switchPlayerTab(tab) {
         const content = document.getElementById('player-stats-content');
         const rivalContext = document.getElementById('player-modal-rival-context');
-        const mapping = { 'gen': 'general', 'l5': 'l5', 'part': 'partido' };
+        const mapping = { 'gen': 'general', 'l5': 'l5', 'l10': 'l10', 'part': 'partido' };
         content.innerHTML = renderStatRows(window.currentPlayerData[mapping[tab]]);
 
         // Context Logic
-        if (tab === 'l5' || tab === 'part') {
+        if (tab === 'l5' || tab === 'l10' || tab === 'part') {
             let logosHtml = '';
-            if (tab === 'l5' && window.playerL5Details) {
-                logosHtml = window.playerL5Details.map(m => `
+            let details = tab === 'l10' ? window.playerL10Details : window.playerL5Details;
+            
+            if ((tab === 'l5' || tab === 'l10') && details) {
+                logosHtml = details.map(m => `
                         <div class="flex flex-col items-center">
                             <span class="text-[9px] font-black ${m.cond === 'L' ? 'text-green-500' : 'text-yellow-500'}">${m.cond}</span>
                             <a href="/match/${m.match_id}"><img src="/static/${m.rival_id}_xsmall.png" onerror="this.src='/static/none.png'" class="w-6 h-6 object-contain hover:scale-110 transition-transform" title="${m.rival}"></a>
+                            <span class="text-[11px] font-black text-transparent">-</span>
                         </div>
                      `).join('');
             } else if (tab === 'part') {
@@ -1131,6 +1544,7 @@
                         <div class="flex flex-col items-center">
                             <span class="text-[9px] font-black ${cond === 'L' ? 'text-green-500' : 'text-yellow-500'}">${cond}</span>
                             <a href="/match/${matchId}"><img src="/static/${rivalId}_xsmall.png" onerror="this.src='/static/none.png'" class="w-6 h-6 object-contain hover:scale-110 transition-transform" title="Rival"></a>
+                            <span class="text-[11px] font-black text-transparent">-</span>
                         </div>
                      `;
             }
@@ -1149,7 +1563,7 @@
         }
 
         // UI de botones
-        ['gen', 'l5', 'part'].forEach(t => {
+        ['gen', 'l5', 'l10', 'part'].forEach(t => {
             const btn = document.getElementById(`tab-btn-${t}`);
             if (btn) {
                 btn.classList.remove('bg-sky-600', 'text-white');
@@ -1652,25 +2066,39 @@
         <!-- PITCH -->
         <div class="relative flex flex-col items-center">
             <!-- TABS -->
-            <div class="flex bg-slate-900/50 p-1 rounded-xl border border-slate-700 mb-2 items-center gap-2">
-                <button onclick="switchPitchView('lineup')" id="btn-view-lineup"
-                    class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all bg-sky-500 text-white shadow-lg">Alineacion</button>
-                {% if match.finished %}
-                <button onclick="switchPitchView('shotmap')" id="btn-view-shotmap"
-                    class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all text-slate-400 hover:text-white">Mapa
-                    de Tiros</button>
-                {% else %}
-                <button onclick="switchPitchView('heatmap')" id="btn-view-heatmap"
-                    class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all text-slate-400 hover:text-white">Mapa
-                    de Tiros (Calor)</button>
+            <div class="flex flex-col items-center gap-2 mb-2">
+                <div class="flex bg-slate-900/50 p-1 rounded-xl border border-slate-700 items-center gap-2">
+                    <button onclick="switchPitchView('lineup')" id="btn-view-lineup"
+                        class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all bg-sky-500 text-white shadow-lg">Alineacion</button>
+                    {% if match.finished %}
+                    <button onclick="switchPitchView('shotmap')" id="btn-view-shotmap"
+                        class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all text-slate-400 hover:text-white">Mapa
+                        de Tiros</button>
+                    {% else %}
+                    <button onclick="switchPitchView('heatmap')" id="btn-view-heatmap"
+                        class="px-6 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all text-slate-400 hover:text-white">Mapa
+                        de Tiros (Calor)</button>
+                    {% endif %}
+                </div>
+                {% if not match.finished %}
                 <!-- Heatmap Controls -->
                 <div id="heatmap-controls"
-                    class="hidden flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 ml-2">
-                    <button onclick="loadHeatmap(false, event)" id="hm-btn-season"
-                        class="px-3 py-1 rounded text-[9px] font-bold uppercase bg-sky-600 text-white transition-all">Temp.</button>
-                    <button onclick="loadHeatmap(true, event)" id="hm-btn-l5"
-                        class="px-3 py-1 rounded text-[9px] font-bold uppercase text-slate-400 hover:text-white transition-all">Ultimos
+                    class="hidden flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 items-center gap-1">
+                    <button onclick="loadHeatmap(10, event)" id="hm-btn-season"
+                        class="px-3 py-1 rounded text-[9px] font-bold uppercase bg-sky-600 text-white transition-all hm-limit-btn">Ultimos 10</button>
+                    <button onclick="loadHeatmap(5, event)" id="hm-btn-l5"
+                        class="px-3 py-1 rounded text-[9px] font-bold uppercase text-slate-400 hover:text-white transition-all hm-limit-btn">Ultimos
                         5</button>
+                    <div class="w-px h-3 bg-slate-700 mx-1"></div>
+                    <button onclick="toggleHmFilter('arco', event)" id="hm-flt-arco"
+                        class="px-3 py-1 rounded text-[9px] font-bold uppercase text-slate-500 border border-slate-700/50 bg-transparent hover:text-white transition-all hm-flt-btn">Arco</button>
+                    <button onclick="toggleHmFilter('cabeza', event)" id="hm-flt-cabeza"
+                        class="px-3 py-1 rounded text-[9px] font-bold uppercase bg-slate-800 text-sky-400 border border-sky-500/50 transition-all hm-flt-btn">Cabeza</button>
+                    <button onclick="toggleHmFilter('lejos', event)" id="hm-flt-lejos"
+                        class="px-3 py-1 rounded text-[9px] font-bold uppercase text-slate-500 border border-slate-700/50 bg-transparent hover:text-white transition-all hm-flt-btn">Lejos</button>
+                    <div class="w-px h-3 bg-slate-700 mx-1"></div>
+                    <button onclick="toggleHmFilter('local', event)" id="hm-flt-local"
+                        class="px-3 py-1 rounded text-[9px] font-bold uppercase text-slate-500 border border-slate-700/50 bg-transparent hover:text-white transition-all hm-flt-btn">Local/Visitante</button>
                 </div>
                 {% endif %}
             </div>
@@ -1725,7 +2153,7 @@
                     <div id="layer-shotmap"
                         class="absolute inset-0 w-full h-full opacity-0 pointer-events-none transition-opacity duration-300">
                         {% set xt, yt = 67, 105 %}
-                        {% set outcome_dict = {"Miss" : "Errado", "AttemptSaved" : "Bloqueado", "Atajado" : "Atajado",
+                        {% set outcome_dict = {"Miss" : "Afuera", "AttemptSaved" : "Bloqueado", "Saved" : "Atajado",
                         "Goal" : "Gol", "Post" : "Palo"} %}
                         {% for s in match_shots %}
                         {% set outcome = outcome_dict.get(s.outcome, s.outcome) %}

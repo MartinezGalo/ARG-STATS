@@ -75,6 +75,32 @@ class FotMob:
             print(f"Excepción al obtener detalles del partido {match_id}: {e}")
             return None
 
+    def request_league_details(self):
+        url = f"{self.base_url}/leagues/112/overview"
+        try:
+            response = self.session.get(url, headers=self.headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                script = soup.find('script', id='__NEXT_DATA__')
+                if script:
+                    data = json.loads(script.string)
+                    league_details = data.get('props', {}).get('pageProps', {})
+                    
+                    class MockResponse:
+                        def __init__(self, data):
+                            self.data = data
+                            self.status_code = 200
+                        def json(self):
+                            return self.data
+                    
+                    return MockResponse(league_details)
+            
+            print(f"Error al obtener detalles de la liga: {response.status_code}")
+            return None
+        except Exception as e:
+            print(f"Excepción al obtener detalles de la liga: {e}")
+            return None
+
 
 
 DB_NAME = "LIGA_ARG_2025.db"
@@ -373,6 +399,19 @@ def load_match_directly(match_id, connection):
     except Exception as e:
        logging.error(f"Error procesando partido {match_id}: {str(e)}")
 
+def get_playoffs():
+    fm = FotMob()
+    league = fm.request_league_details().json()
+
+    match_ids = []
+    for match in league.get("playoff", {}).get("rounds", [])[0].get("matchups", []):
+        match_ids.append(str(match.get("matches", [])[0].get("matchId", None)))
+    return match_ids
+
+
+
+
+
 # --- FLUJO PRINCIPAL ---
 
 def get_automated_updates():
@@ -419,12 +458,15 @@ def get_automated_updates():
         ).fetchall()
         
 
-
         
         logging.info(f"--- Iniciando ciclo de actualizacion (Jornadas {last_match['gameweek']} y {int(next_gameweek['gameweek'])}) ---")
 
 
         match_ids = [row['id'] for row in matches_to_update]
+        if(next_gameweek['gameweek'] == '1'):
+            logging.info(f"Jornada de playoffs detectada...")
+            for id in get_playoffs():
+                match_ids.append(id)
 
         if not match_ids:
             logging.info("Sin partidos pendientes. Todo al dia.")

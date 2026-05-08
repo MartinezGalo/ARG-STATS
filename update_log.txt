@@ -5325,3 +5325,21 @@
 2026-05-08 00:08:06 - INFO - Partido 5449144: Info actualizada (Pendiente).
 2026-05-08 00:08:06 - INFO - 	Detalles de 8 jugadores no disponibles cargados.
 2026-05-08 00:08:08 - INFO - --- Fin del ciclo de actualizacion ---
+2026-05-08 16:16:04 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 9 y 17) ---
+2026-05-08 16:16:06 - INFO - Partido 5449137: Info actualizada (Pendiente).
+2026-05-08 16:16:06 - INFO - 	Detalles de 7 jugadores no disponibles cargados.
+2026-05-08 16:16:09 - INFO - Partido 5449138: Info actualizada (Pendiente).
+2026-05-08 16:16:09 - INFO - 	Detalles de 5 jugadores no disponibles cargados.
+2026-05-08 16:16:13 - INFO - Partido 5449139: Info actualizada (Pendiente).
+2026-05-08 16:16:13 - INFO - 	Detalles de 5 jugadores no disponibles cargados.
+2026-05-08 16:16:16 - INFO - Partido 5449140: Info actualizada (Pendiente).
+2026-05-08 16:16:16 - INFO - 	Detalles de 4 jugadores no disponibles cargados.
+2026-05-08 16:16:19 - INFO - Partido 5449141: Info actualizada (Pendiente).
+2026-05-08 16:16:19 - INFO - 	Detalles de 6 jugadores no disponibles cargados.
+2026-05-08 16:16:23 - INFO - Partido 5449142: Info actualizada (Pendiente).
+2026-05-08 16:16:23 - INFO - 	Detalles de 6 jugadores no disponibles cargados.
+2026-05-08 16:16:27 - INFO - Partido 5449143: Info actualizada (Pendiente).
+2026-05-08 16:16:27 - INFO - 	Detalles de 13 jugadores no disponibles cargados.
+2026-05-08 16:16:30 - INFO - Partido 5449144: Info actualizada (Pendiente).
+2026-05-08 16:16:30 - INFO - 	Detalles de 8 jugadores no disponibles cargados.
+2026-05-08 16:16:32 - INFO - --- Fin del ciclo de actualizacion ---

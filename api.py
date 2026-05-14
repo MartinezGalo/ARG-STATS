@@ -402,10 +402,12 @@ def load_match_directly(match_id, connection):
 def get_playoffs():
     fm = FotMob()
     league = fm.request_league_details().json()
-
+    test = league.get("playoff", {}).get("rounds", [])
     match_ids = []
-    for match in league.get("playoff", {}).get("rounds", [])[0].get("matchups", []):
-        match_ids.append(str(match.get("matches", [])[0].get("matchId", None)))
+    for round in league.get("playoff", {}).get("rounds", []):
+        for matchup in round.get("matchups", []):
+            for match in matchup.get("matches", []):
+                match_ids.append(str(match.get("matchId", None)))
     return match_ids
 
 

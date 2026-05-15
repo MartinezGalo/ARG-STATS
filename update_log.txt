@@ -5703,3 +5703,9 @@
 2026-05-14 17:03:43 - INFO - 	Detalles de 3 tarjetas cargadas.
 2026-05-14 17:03:43 - INFO - Partido 5449140: Actualizacion completa.
 2026-05-14 17:03:45 - INFO - --- Fin del ciclo de actualizacion ---
+2026-05-15 16:53:01 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 18 y 19) ---
+2026-05-15 16:53:04 - INFO - Partido 5586275: Info actualizada (Pendiente).
+2026-05-15 16:53:04 - INFO - 	Detalles de 12 jugadores no disponibles cargados.
+2026-05-15 16:53:08 - INFO - Partido 5586276: Info actualizada (Pendiente).
+2026-05-15 16:53:08 - INFO - 	Detalles de 3 jugadores no disponibles cargados.
+2026-05-15 16:53:09 - INFO - --- Fin del ciclo de actualizacion ---

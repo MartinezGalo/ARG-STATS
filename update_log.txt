@@ -5709,3 +5709,9 @@
 2026-05-15 16:53:08 - INFO - Partido 5586276: Info actualizada (Pendiente).
 2026-05-15 16:53:08 - INFO - 	Detalles de 3 jugadores no disponibles cargados.
 2026-05-15 16:53:09 - INFO - --- Fin del ciclo de actualizacion ---
+2026-05-16 16:00:45 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 18 y 19) ---
+2026-05-16 16:00:47 - INFO - Partido 5586275: Info actualizada (Pendiente).
+2026-05-16 16:00:47 - INFO - 	Detalles de 8 jugadores no disponibles cargados.
+2026-05-16 16:00:50 - INFO - Partido 5586276: Info actualizada (Pendiente).
+2026-05-16 16:00:50 - INFO - 	Detalles de 3 jugadores no disponibles cargados.
+2026-05-16 16:00:51 - INFO - --- Fin del ciclo de actualizacion ---

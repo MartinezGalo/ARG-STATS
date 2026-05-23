@@ -685,6 +685,8 @@ def get_prediction_logic(home_id, away_id, category='shots', filter_type='all', 
     """
     if precalc_ranks: 
         m_ranks, a_ranks, ref_ranks = precalc_ranks
+        # Si precalc_ranks viene de una ruta que ya dividio local/visita (como index), 
+        # m_ranks ya tiene los ranks 'home' y a_ranks los 'away'.
         rm_h = m_ranks.get(str(home_id), 15); ra_h = a_ranks.get(str(home_id), 15)
         rm_v = m_ranks.get(str(away_id), 15); ra_v = a_ranks.get(str(away_id), 15)
     else: 
@@ -948,13 +950,25 @@ def match_detail(match_id):
     if not match: return "No existe", 404
 
     sf = request.args.get('shot_filter', 'all')
-    pred_s = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'shots', sf)
-    pred_h = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'headers')
-    pred_c = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'cards', referee=match['referee'])
-    pred_f = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'fouls', referee=match['referee'])
-    pred_t = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'tackles')
-    pred_cor = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'corners')
-    pred_o = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'offsides')
+    
+    # Precalculate rankings for predictions to improve performance
+    precalc = {
+        'shots': (get_rankings_from_stats('shots', 'all', order_by='avg')[0], get_rankings_from_stats('shots', 'all', order_by='avg')[1], None),
+        'headers': (get_rankings_from_stats('headers', 'all', order_by='avg')[0], get_rankings_from_stats('headers', 'all', order_by='avg')[1], None),
+        'cards': (get_rankings_from_stats('cards', 'all', order_by='avg')[0], get_rankings_from_stats('cards', 'all', order_by='avg')[1], get_referee_rankings(order_by='avg')[0]),
+        'fouls': (get_rankings_from_stats('fouls', 'all', order_by='avg')[0], get_rankings_from_stats('fouls', 'all', order_by='avg')[1], get_referee_rankings(order_by='avg')[1]),
+        'corners': (get_rankings_from_stats('corners', 'all', order_by='avg')[0], get_rankings_from_stats('corners', 'all', order_by='avg')[1], None),
+        'tackles': (get_rankings_from_stats('tackles', 'all', order_by='avg')[0], get_rankings_from_stats('tackles', 'all', order_by='avg')[1], None),
+        'offsides': (get_rankings_from_stats('offsides', 'all', order_by='avg')[0], get_rankings_from_stats('offsides', 'all', order_by='avg')[1], None)
+    }
+
+    pred_s = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'shots', sf, precalc_ranks=precalc['shots'])
+    pred_h = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'headers', precalc_ranks=precalc['headers'])
+    pred_c = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'cards', referee=match['referee'], precalc_ranks=precalc['cards'])
+    pred_f = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'fouls', referee=match['referee'], precalc_ranks=precalc['fouls'])
+    pred_t = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'tackles', precalc_ranks=precalc['tackles'])
+    pred_cor = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'corners', precalc_ranks=precalc['corners'])
+    pred_o = get_prediction_logic(match['id_home_team'], match['id_away_team'], 'offsides', precalc_ranks=precalc['offsides'])
 
     cards_dict = {str(r['player_id']): r['card_type'] for r in conn.execute('SELECT player_id, card_type FROM cards WHERE match_id = ?', (str(match_id),)).fetchall()}
 
@@ -969,16 +983,17 @@ def match_detail(match_id):
     home_lineup = get_lineup_data(h_mid, match['id_home_team'], cards_dict) if h_mid else []
     away_lineup = get_lineup_data(a_mid, match['id_away_team'], cards_dict) if a_mid else []
 
-    def process_subs(rows):
+    def process_subs(rows, cards_dict_local):
         res = []
         for r in rows:
             d = dict(r)
             d['player_name'] = d.get('last_name', '')
+            d['card'] = cards_dict_local.get(str(r['player_id']))
             res.append(d)
         return sorted(res, key=lambda x: {"ARQ":0,"DF":1,"M":2,"DL":3}.get(x['position'],99))
 
-    home_subs = process_subs(conn.execute('SELECT * FROM player_match_details WHERE match_id=? AND team_id=? AND is_starter=0 AND unavailable=0', (str(h_mid or match_id), str(match['id_home_team']))).fetchall())
-    away_subs = process_subs(conn.execute('SELECT * FROM player_match_details WHERE match_id=? AND team_id=? AND is_starter=0 AND unavailable=0', (str(a_mid or match_id), str(match['id_away_team']))).fetchall())
+    home_subs = process_subs(conn.execute('SELECT * FROM player_match_details WHERE match_id=? AND team_id=? AND is_starter=0 AND unavailable=0', (str(h_mid or match_id), str(match['id_home_team']))).fetchall(), cards_dict)
+    away_subs = process_subs(conn.execute('SELECT * FROM player_match_details WHERE match_id=? AND team_id=? AND is_starter=0 AND unavailable=0', (str(a_mid or match_id), str(match['id_away_team']))).fetchall(), cards_dict)
 
     stats = {
         "home": {"shots": 0, "target": 0, "outside": 0, "headers": 0, "fouls": 0, "corners": 0, "offsides": 0, "tackles": 0, "yellows": 0, "reds": 0},
@@ -1026,9 +1041,9 @@ def match_detail(match_id):
         ORDER BY date DESC LIMIT 5
     ''', (str(match['id_home_team']), str(match['id_away_team']), str(match['id_away_team']), str(match['id_home_team']), str(match_id))).fetchall()
 
-    # Ultimos 5 partidos de cada equipo (para contexto del ranking)
-    def get_last_5_context(tid):
-        rows = conn.execute('SELECT id, id_home_team, id_away_team, home_team, away_team, score FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT 5', (str(tid), str(tid))).fetchall()
+    # Ultimos 5 y 10 partidos de cada equipo (para contexto del ranking)
+    def get_context_matches(tid, limit):
+        rows = conn.execute('SELECT id, id_home_team, id_away_team, home_team, away_team, score, date FROM matches WHERE (id_home_team = ? OR id_away_team = ?) AND finished = 1 ORDER BY date DESC LIMIT ?', (str(tid), str(tid), limit)).fetchall()
         res = []
         for r in rows:
             is_home = str(r['id_home_team']) == str(tid)
@@ -1045,11 +1060,13 @@ def match_detail(match_id):
                     else: res_val = 'L'
                 except: pass
                 
-            res.append({'rival_id': rival_id, 'rival_name': rival_name, 'cond': 'L' if is_home else 'V', 'id': str(r['id']), 'score': r['score'], 'result': res_val})
+            res.append({'rival_id': rival_id, 'rival_name': rival_name, 'cond': 'L' if is_home else 'V', 'id': str(r['id']), 'score': r['score'], 'result': res_val, 'date': r['date']})
         return res
 
-    l5_home = get_last_5_context(match['id_home_team'])
-    l5_away = get_last_5_context(match['id_away_team'])
+    l10_home = get_context_matches(match['id_home_team'], 10)
+    l10_away = get_context_matches(match['id_away_team'], 10)
+    l5_home = l10_home[:5]
+    l5_away = l10_away[:5]
     
     # Contexto del "Ultimo Partido" (para cuando el actual esta pendiente)
     def get_single_context(mid, tid):
@@ -1162,11 +1179,56 @@ def match_detail(match_id):
             })
 
     # Find Previous and Next Match
-    prev_match = conn.execute('SELECT * FROM matches WHERE date < ? OR (date = ? AND id < ?) ORDER BY date DESC, id DESC LIMIT 1', (match['date'], match['date'], str(match_id))).fetchone()
-    next_match = conn.execute('SELECT * FROM matches WHERE date > ? OR (date = ? AND id > ?) ORDER BY date ASC, id ASC LIMIT 1', (match['date'], match['date'], str(match_id))).fetchone()
+    prev_match = conn.execute('''
+        SELECT * FROM matches 
+        WHERE (
+            strftime('%Y', date),
+            CASE WHEN tournament LIKE '%Apertura%' THEN 1 WHEN tournament LIKE '%Clausura%' THEN 2 ELSE 3 END,
+            CAST(gameweek AS INTEGER),
+            date,
+            CAST(id AS INTEGER)
+        ) < (
+            strftime('%Y', ?),
+            CASE WHEN ? LIKE '%Apertura%' THEN 1 WHEN ? LIKE '%Clausura%' THEN 2 ELSE 3 END,
+            CAST(? AS INTEGER),
+            ?,
+            CAST(? AS INTEGER)
+        )
+        ORDER BY 
+            strftime('%Y', date) DESC,
+            CASE WHEN tournament LIKE '%Apertura%' THEN 1 WHEN tournament LIKE '%Clausura%' THEN 2 ELSE 3 END DESC,
+            CAST(gameweek AS INTEGER) DESC,
+            date DESC,
+            CAST(id AS INTEGER) DESC
+        LIMIT 1
+    ''', (match['date'], match['tournament'], match['tournament'], match['gameweek'], match['date'], int(match_id))).fetchone()
+
+    next_match = conn.execute('''
+        SELECT * FROM matches 
+        WHERE (
+            strftime('%Y', date),
+            CASE WHEN tournament LIKE '%Apertura%' THEN 1 WHEN tournament LIKE '%Clausura%' THEN 2 ELSE 3 END,
+            CAST(gameweek AS INTEGER),
+            date,
+            CAST(id AS INTEGER)
+        ) > (
+            strftime('%Y', ?),
+            CASE WHEN ? LIKE '%Apertura%' THEN 1 WHEN ? LIKE '%Clausura%' THEN 2 ELSE 3 END,
+            CAST(? AS INTEGER),
+            ?,
+            CAST(? AS INTEGER)
+        )
+        ORDER BY 
+            strftime('%Y', date) ASC,
+            CASE WHEN tournament LIKE '%Apertura%' THEN 1 WHEN tournament LIKE '%Clausura%' THEN 2 ELSE 3 END ASC,
+            CAST(gameweek AS INTEGER) ASC,
+            date ASC,
+            CAST(id AS INTEGER) ASC
+        LIMIT 1
+    ''', (match['date'], match['tournament'], match['tournament'], match['gameweek'], match['date'], int(match_id))).fetchone()
 
     conn.close()
-    return render_template('detail.html', match=match, prev_match=prev_match, next_match=next_match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, pred_cor=pred_cor, pred_t=pred_t, pred_o=pred_o, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf, h2h_matches=h2h_matches, ref_history=ref_history, l5_home=l5_home, l5_away=l5_away, last_match_home=last_match_home, last_match_away=last_match_away, h_mid=h_mid, a_mid=a_mid, match_goals=match_goals, match_shots=match_shots, unavail_home=unavail_home, unavail_away=unavail_away)
+    return render_template('detail.html', match=match, prev_match=prev_match, next_match=next_match, home_lineup=home_lineup, away_lineup=away_lineup, home_subs=home_subs, away_subs=away_subs, home_top=get_team_rankings_logic(match['id_home_team']), away_top=get_team_rankings_logic(match['id_away_team']), stats=stats, m_note=m_note, pred_s=pred_s, pred_h=pred_h, pred_c=pred_c, pred_f=pred_f, pred_cor=pred_cor, pred_t=pred_t, pred_o=pred_o, lineup_label="Formacion" if match['finished'] else "ultimo 11", current_filter=sf, h2h_matches=h2h_matches, ref_history=ref_history, l5_home=l5_home, l5_away=l5_away, l10_home=l10_home, l10_away=l10_away, last_match_home=last_match_home, last_match_away=last_match_away, h_mid=h_mid, a_mid=a_mid, match_goals=match_goals, match_shots=match_shots, unavail_home=unavail_home, unavail_away=unavail_away)
 
 @app.route('/api/team_ranking/<team_id>')
 def api_team_ranking(team_id):
@@ -1374,10 +1436,23 @@ def player_info(player_id, match_id):
         rival = s['away_team'] if is_home else s['home_team']
         rival_id = str(s['id_away_team']) if is_home else str(s['id_home_team'])
         
+        # Unificamos a pitch horizontal (105x67)
+        # s.x (FotMob vertical long axis) -> px (long axis horizontal)
+        # s.y (FotMob vertical short axis) -> py (short axis horizontal)
+        let_px = s['x']
+        let_py = s['y']
+        let_cx = s['goal_cross_x'] if s['goal_cross_x'] is not None else 105
+        let_cy = s['goal_cross_y'] if s['goal_cross_y'] is not None else 33.5
+        
+        if s['is_blocked']:
+            let_cx = s['blocked_x']
+            let_cy = s['blocked_y']
+
+        # Los datos de FotMob ya vienen normalizados atacando siempre hacia 105. No invertimos.
+
         player_shots.append({
-            "x": s['y'], "y": s['x'], # FotMob coordinates are swapped compared to visual pitch
-            "blocked_x": s['blocked_y'], "blocked_y": s['blocked_x'],
-            "goal_cross_x": s['goal_cross_y'], "goal_cross_y": s['goal_cross_x'],
+            "x": let_px, "y": let_py,
+            "cx": let_cx, "cy": let_cy,
             "is_blocked": s['is_blocked'], "outcome": s['outcome'],
             "situation": s['situation'],
             "on_target": s['on_target'], "minute": s['minute'],
@@ -1475,9 +1550,9 @@ def api_match_heatmap(match_id):
         if hide_cabeza: filter_sql += " AND s.shot_type != 'Header'"
         if only_lejos: filter_sql += " AND s.inside_box = 0"
         
-        # Obtenemos las coordenadas y si el que pateo era visitante en ese partido para normalizar
+        # Obtenemos las coordenadas (intercambiadas para el canvas vertical: x=67, y=105)
         query = f"""
-            SELECT s.x as y, s.y as x, (m.id_home_team = {team_id}) as was_home, inside_box,
+            SELECT s.y as x, s.x as y, (m.id_home_team = {team_id}) as was_home, inside_box,
                    pmd.last_name as player_name, pmd.player_id as player_id, pmd.shirt_number as number
             FROM shots s
             JOIN matches m ON s.match_id = m.id
@@ -1495,6 +1570,26 @@ def api_match_heatmap(match_id):
     }
     conn.close()
     return jsonify(data)
+
+
+@app.route('/api/lineup/<match_id>/<team_id>')
+def api_lineup(match_id, team_id):
+    conn = get_db_connection()
+    cards_dict = {str(r['player_id']): r['card_type'] for r in conn.execute('SELECT player_id, card_type FROM cards WHERE match_id = ?', (str(match_id),)).fetchall()}
+    lineup = get_lineup_data(match_id, team_id, cards_dict)
+    
+    def process_subs(rows, cards_dict_local):
+        res = []
+        for r in rows:
+            d = dict(r)
+            d['player_name'] = d.get('last_name', '')
+            d['card'] = cards_dict_local.get(str(r['player_id']))
+            res.append(d)
+        return sorted(res, key=lambda x: {"ARQ":0,"DF":1,"M":2,"DL":3}.get(x['position'],99))
+
+    subs = process_subs(conn.execute('SELECT * FROM player_match_details WHERE match_id=? AND team_id=? AND is_starter=0 AND unavailable=0', (str(match_id), str(team_id))).fetchall(), cards_dict)
+    conn.close()
+    return jsonify({'lineup': lineup, 'subs': subs})
 
 @app.route('/search_players/<team_id>')
 def search_players(team_id):

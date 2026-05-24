@@ -5844,3 +5844,7 @@
 2026-05-22 17:10:00 - INFO - --- Fin del ciclo de actualizacion ---
 2026-05-23 16:03:50 - ERROR - Error critico en automatizacion: invalid literal for int() with base 10: 'final'
 2026-05-23 16:03:50 - INFO - --- Fin del ciclo de actualizacion ---
+2026-05-24 16:03:12 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 19 y 20) ---
+2026-05-24 16:03:14 - INFO - Partido 5647379: Info actualizada (Pendiente).
+2026-05-24 16:03:14 - INFO - 	Detalles de 10 jugadores no disponibles cargados.
+2026-05-24 16:03:16 - INFO - --- Fin del ciclo de actualizacion ---

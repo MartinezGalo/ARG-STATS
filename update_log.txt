@@ -5848,3 +5848,5 @@
 2026-05-24 16:03:14 - INFO - Partido 5647379: Info actualizada (Pendiente).
 2026-05-24 16:03:14 - INFO - 	Detalles de 10 jugadores no disponibles cargados.
 2026-05-24 16:03:16 - INFO - --- Fin del ciclo de actualizacion ---
+2026-05-25 17:09:23 - ERROR - Error critico en automatizacion: invalid literal for int() with base 10: 'final'
+2026-05-25 17:09:23 - INFO - --- Fin del ciclo de actualizacion ---

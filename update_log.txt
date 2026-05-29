@@ -5856,3 +5856,5 @@
 2026-05-27 17:57:10 - INFO - --- Fin del ciclo de actualizacion ---
 2026-05-28 18:13:34 - ERROR - Error critico en automatizacion: invalid literal for int() with base 10: 'final'
 2026-05-28 18:13:34 - INFO - --- Fin del ciclo de actualizacion ---
+2026-05-29 18:13:13 - ERROR - Error critico en automatizacion: invalid literal for int() with base 10: 'final'
+2026-05-29 18:13:13 - INFO - --- Fin del ciclo de actualizacion ---

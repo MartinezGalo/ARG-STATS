@@ -11782,3 +11782,59 @@
 2026-07-25 16:07:28 - INFO - 	Detalles de 4 tarjetas cargadas.
 2026-07-25 16:07:28 - INFO - Partido 5115887: Actualizacion completa.
 2026-07-25 16:07:29 - INFO - --- Fin del ciclo de actualizacion ---
+2026-07-26 16:03:34 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 1 y 2) ---
+2026-07-26 16:03:35 - INFO - Partido 5115888: Info actualizada (Pendiente).
+2026-07-26 16:03:35 - INFO - 	Detalles de 5 jugadores no disponibles cargados.
+2026-07-26 16:03:38 - INFO - Partido 5115889: Info actualizada (Pendiente).
+2026-07-26 16:03:38 - INFO - 	Detalles de 4 jugadores no disponibles cargados.
+2026-07-26 16:03:40 - INFO - Partido 5115890: Info actualizada (Pendiente).
+2026-07-26 16:03:43 - INFO - Partido 5115891: Info actualizada (Pendiente).
+2026-07-26 16:03:43 - INFO - 	Detalles de 9 jugadores no disponibles cargados.
+2026-07-26 16:03:46 - INFO - Partido 5115892: Info actualizada (Pendiente).
+2026-07-26 16:03:46 - INFO - 	Detalles de 4 jugadores no disponibles cargados.
+2026-07-26 16:03:50 - INFO - Partido 5115893: Info actualizada (Pendiente).
+2026-07-26 16:03:53 - INFO - Partido 5115894: Info actualizada (Pendiente).
+2026-07-26 16:03:53 - INFO - 	Detalles de 9 jugadores no disponibles cargados.
+2026-07-26 16:03:56 - INFO - Partido 5115895: Info actualizada (Pendiente).
+2026-07-26 16:03:56 - INFO - 	Detalles de 2 jugadores no disponibles cargados.
+2026-07-26 16:03:59 - INFO - Partido 5115896: Info actualizada (Pendiente).
+2026-07-26 16:03:59 - INFO - 	Detalles de 1 jugadores no disponibles cargados.
+2026-07-26 16:04:02 - INFO - Partido 5115897: Info actualizada (Pendiente).
+2026-07-26 16:04:02 - INFO - 	Detalles de 7 jugadores no disponibles cargados.
+2026-07-26 16:04:05 - INFO - Partido 5115898: Info actualizada (Pendiente).
+2026-07-26 16:04:05 - INFO - 	Detalles de 8 jugadores no disponibles cargados.
+2026-07-26 16:04:09 - INFO - Partido 5115899: Info actualizada (Pendiente).
+2026-07-26 16:04:09 - INFO - 	Detalles de 8 jugadores no disponibles cargados.
+2026-07-26 16:04:12 - INFO - Partido 5115900: Info actualizada (Pendiente).
+2026-07-26 16:04:12 - INFO - 	Detalles de 7 jugadores no disponibles cargados.
+2026-07-26 16:04:15 - INFO - Partido 5115901: Info actualizada (Pendiente).
+2026-07-26 16:04:15 - INFO - 	Detalles de 5 jugadores no disponibles cargados.
+2026-07-26 16:04:18 - INFO - Partido 5115902: Info actualizada (Pendiente).
+2026-07-26 16:04:18 - INFO - 	Detalles de 5 jugadores no disponibles cargados.
+2026-07-26 16:04:20 - INFO - Partido 5115873: Info actualizada (Pendiente).
+2026-07-26 16:04:20 - INFO - 	Detalles de 2 jugadores no disponibles cargados.
+2026-07-26 16:04:23 - INFO - Partido 5115876: Info actualizada (Pendiente).
+2026-07-26 16:04:23 - INFO - 	Detalles de 7 jugadores no disponibles cargados.
+2026-07-26 16:04:25 - INFO - Partido 5115877: Info actualizada (Pendiente).
+2026-07-26 16:04:25 - INFO - 	Detalles de 2 jugadores no disponibles cargados.
+2026-07-26 16:04:28 - INFO - Partido 5115878:
+2026-07-26 16:04:28 - INFO - 	Detalles de 52 jugadores cargados.
+2026-07-26 16:04:28 - INFO - 	Detalles de 26 tiros cargados.
+2026-07-26 16:04:28 - INFO - 	Detalles de 4 tarjetas cargadas.
+2026-07-26 16:04:28 - INFO - Partido 5115878: Actualizacion completa.
+2026-07-26 16:04:31 - INFO - Partido 5115881:
+2026-07-26 16:04:31 - INFO - 	Detalles de 52 jugadores cargados.
+2026-07-26 16:04:31 - INFO - 	Detalles de 36 tiros cargados.
+2026-07-26 16:04:31 - INFO - 	Detalles de 6 tarjetas cargadas.
+2026-07-26 16:04:31 - INFO - Partido 5115881: Actualizacion completa.
+2026-07-26 16:04:34 - INFO - Partido 5115882:
+2026-07-26 16:04:34 - INFO - 	Detalles de 53 jugadores cargados.
+2026-07-26 16:04:34 - INFO - 	Detalles de 28 tiros cargados.
+2026-07-26 16:04:34 - INFO - 	Detalles de 3 tarjetas cargadas.
+2026-07-26 16:04:34 - INFO - Partido 5115882: Actualizacion completa.
+2026-07-26 16:04:37 - INFO - Partido 5115885:
+2026-07-26 16:04:37 - INFO - 	Detalles de 50 jugadores cargados.
+2026-07-26 16:04:37 - INFO - 	Detalles de 19 tiros cargados.
+2026-07-26 16:04:37 - INFO - 	Detalles de 6 tarjetas cargadas.
+2026-07-26 16:04:37 - INFO - Partido 5115885: Actualizacion completa.
+2026-07-26 16:04:39 - INFO - --- Fin del ciclo de actualizacion ---

@@ -12243,3 +12243,11 @@
 2026-08-04 16:54:50 - INFO - Partido 5115902: Info actualizada (Pendiente).
 2026-08-04 16:54:50 - INFO - 	Detalles de 4 jugadores no disponibles cargados.
 2026-08-04 16:54:51 - INFO - --- Fin del ciclo de actualizacion ---
+2026-08-05 16:43:36 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 3 y 2) ---
+2026-08-05 16:43:38 - INFO - Partido 5115891: Info actualizada (Pendiente).
+2026-08-05 16:43:38 - INFO - 	Detalles de 8 jugadores no disponibles cargados.
+2026-08-05 16:43:42 - INFO - Partido 5115901: Info actualizada (Pendiente).
+2026-08-05 16:43:42 - INFO - 	Detalles de 8 jugadores no disponibles cargados.
+2026-08-05 16:43:45 - INFO - Partido 5115902: Info actualizada (Pendiente).
+2026-08-05 16:43:45 - INFO - 	Detalles de 4 jugadores no disponibles cargados.
+2026-08-05 16:43:47 - INFO - --- Fin del ciclo de actualizacion ---

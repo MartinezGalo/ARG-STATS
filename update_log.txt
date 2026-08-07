@@ -12251,3 +12251,20 @@
 2026-08-05 16:43:45 - INFO - Partido 5115902: Info actualizada (Pendiente).
 2026-08-05 16:43:45 - INFO - 	Detalles de 4 jugadores no disponibles cargados.
 2026-08-05 16:43:47 - INFO - --- Fin del ciclo de actualizacion ---
+2026-08-07 15:58:42 - INFO - --- Iniciando ciclo de actualizacion (Jornadas 3 y 2) ---
+2026-08-07 15:58:44 - INFO - Partido 5115891:
+2026-08-07 15:58:44 - INFO - 	Detalles de 53 jugadores cargados.
+2026-08-07 15:58:44 - INFO - 	Detalles de 20 tiros cargados.
+2026-08-07 15:58:44 - INFO - 	Detalles de 4 tarjetas cargadas.
+2026-08-07 15:58:44 - INFO - Partido 5115891: Actualizacion completa.
+2026-08-07 15:58:47 - INFO - Partido 5115901:
+2026-08-07 15:58:47 - INFO - 	Detalles de 51 jugadores cargados.
+2026-08-07 15:58:47 - INFO - 	Detalles de 33 tiros cargados.
+2026-08-07 15:58:47 - INFO - 	Detalles de 5 tarjetas cargadas.
+2026-08-07 15:58:47 - INFO - Partido 5115901: Actualizacion completa.
+2026-08-07 15:58:49 - INFO - Partido 5115902:
+2026-08-07 15:58:49 - INFO - 	Detalles de 49 jugadores cargados.
+2026-08-07 15:58:49 - INFO - 	Detalles de 21 tiros cargados.
+2026-08-07 15:58:49 - INFO - 	Detalles de 3 tarjetas cargadas.
+2026-08-07 15:58:49 - INFO - Partido 5115902: Actualizacion completa.
+2026-08-07 15:58:51 - INFO - --- Fin del ciclo de actualizacion ---

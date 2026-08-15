@@ -25,24 +25,25 @@ jobs:
           
       - name: Instalar Librerías
         run: |
-          pip install requests pandas beautifulsoup4
+          pip install requests pandas beautifulsoup4 curl_cffi
           
       - name: Ejecutar Actualización
-        run: python api.py
+        run: |
+          python api.py
         
       - name: Guardar Cambios en GitHub
         id: commit_step
         run: |
           git config --global user.name "Bot de Actualización"
           git config --global user.email "actions@github.com"
-          git add LIGA_ARG_2025.db update_log.txt
+          git add ARGSTATS.db update_log.txt
           
           if git diff --staged --quiet; then
             echo "changes=false" >> $GITHUB_OUTPUT
             echo "No hay cambios para subir."
           else
             git commit -m "Auto-update: DB y Logs $(date +'%Y-%m-%d %H:%M:%S')"
-            git push origin main  # Especifica la rama explícitamente
+            git push origin main
             echo "changes=true" >> $GITHUB_OUTPUT
           fi
           

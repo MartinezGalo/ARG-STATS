@@ -14,77 +14,77 @@
     </style>
 {% endblock %}
 
-{% block body_class %}p-8 pb-0 font-sans{% endblock %}
+{% block body_class %}p-4 pb-1 font-sans{% endblock %}
 
 {% block content %}
-    <div class="max-w-[1500px] mx-auto">
+    <div class="max-w-[1400px] mx-auto">
         <!-- HEADER -->
-        <header class="flex flex-col md:flex-row justify-between items-center mb-4 gap-6">
+        <header class="flex flex-col md:flex-row justify-between items-center mb-2 gap-4">
             <a href="/"><h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">ARG STATS</h1></a>
             <nav>
-                <a href="/" class="bg-slate-800 hover:bg-slate-700 px-6 py-2 rounded-xl text-xs font-black uppercase transition-all border border-slate-700">← Volver</a>
+                <a href="/" class="bg-slate-800 hover:bg-slate-700 px-4 py-1 rounded-lg text-[10px] font-black uppercase transition-all border border-slate-700">← Volver</a>
             </nav>
         </header>
 
         <!-- CONTROLES -->
-        <div class="flex flex-col items-center gap-4 mt-2 mb-4 bg-slate-900/80 p-4 rounded-b-[2rem] border-t border-slate-200 backdrop-blur-xl shadow-2xl">
+        <div class="flex flex-col items-center gap-2 my-1  bg-slate-900/80 p-2.5 border-t border-slate-200 backdrop-blur-xl shadow-xl">
             
             <!-- 1. MODO (Equipos | Jugadores | Arbitros) -->
-            <div class="flex bg-slate-800 p-1.5 rounded-2xl border border-slate-700 shadow-lg">
-                <button onclick="setMode('teams')" id="btn-mode-teams" class="px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all">Equipos</button>
-                <button onclick="setMode('players')" id="btn-mode-players" class="px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all">Jugadores</button>
-                <button onclick="setMode('referees')" id="btn-mode-referees" class="px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all">Arbitros</button>
+            <div class="flex bg-slate-800 p-1 rounded-xl border border-slate-700 shadow-md">
+                <button onclick="setMode('teams')" id="btn-mode-teams" class="px-6 py-0.5 rounded-lg text-[10px] font-black uppercase transition-all">Equipos</button>
+                <button onclick="setMode('players')" id="btn-mode-players" class="px-6 py-0.5 rounded-lg text-[10px] font-black uppercase transition-all">Jugadores</button>
+                <button onclick="setMode('referees')" id="btn-mode-referees" class="px-6 py-0.5 rounded-lg text-[10px] font-black uppercase transition-all">Arbitros</button>
             </div>
 
             <!-- 2. CATEGORIA -->
-            <div class="flex flex-wrap justify-center gap-2">
-                <button onclick="setCategory('shots')" id="btn-cat-shots" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Tiros</button>
-                <button onclick="setCategory('goals')" id="btn-cat-goals" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Goles</button>
-                <button onclick="setCategory('assists')" id="btn-cat-assists" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Asistencias</button>
-                <button onclick="setCategory('headers')" id="btn-cat-headers" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Cabezazos</button>
-                <button onclick="setCategory('cards')" id="btn-cat-cards" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Tarjetas</button>
-                <button onclick="setCategory('fouls')" id="btn-cat-fouls" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Faltas</button>
-                <button onclick="setCategory('fouls_received')" id="btn-cat-fouls_received" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Faltas Rec.</button>
-                <button onclick="setCategory('corners')" id="btn-cat-corners" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Corners</button>
-                <button onclick="setCategory('tackles')" id="btn-cat-tackles" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Entradas</button>
-                <button onclick="setCategory('offsides')" id="btn-cat-offsides" class="cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all">Offsides</button>
+            <div class="flex flex-wrap justify-center gap-1.5">
+                <button onclick="setCategory('shots')" id="btn-cat-shots" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Tiros</button>
+                <button onclick="setCategory('goals')" id="btn-cat-goals" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Goles</button>
+                <button onclick="setCategory('assists')" id="btn-cat-assists" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Asistencias</button>
+                <button onclick="setCategory('headers')" id="btn-cat-headers" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Cabezazos</button>
+                <button onclick="setCategory('cards')" id="btn-cat-cards" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Tarjetas</button>
+                <button onclick="setCategory('fouls')" id="btn-cat-fouls" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Faltas</button>
+                <button onclick="setCategory('fouls_received')" id="btn-cat-fouls_received" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Faltas Rec.</button>
+                <!--<button onclick="setCategory('corners')" id="btn-cat-corners" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Corners</button>-->
+                <button onclick="setCategory('tackles')" id="btn-cat-tackles" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Entradas</button>
+                <button onclick="setCategory('offsides')" id="btn-cat-offsides" class="cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all">Offsides</button>
             </div>
 
             <!-- 3. SUB-FILTROS Y CONTROLES GLOBALES -->
-            <div class="flex flex-wrap justify-center gap-4 items-center w-full">
+            <div class="flex flex-wrap justify-center gap-3 items-center w-full">
                 
                 <!-- Tipo de Tiro -->
-                <div id="subfilter-container" class="hidden flex bg-slate-800 p-1 rounded-xl border border-slate-700 shadow-lg animate-fade-in-down">
-                    <button onclick="setSubFilter('all')" id="btn-sub-all" class="px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all">Todos</button>
-                    <button onclick="setSubFilter('target')" id="btn-sub-target" class="px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all">Al Arco</button>
-                    <button onclick="setSubFilter('long')" id="btn-sub-long" class="px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all">Lejos</button>
+                <div id="subfilter-container" class="hidden flex bg-slate-800 p-1 rounded-lg border border-slate-700 shadow-md">
+                    <button onclick="setCategory('shots')" id="btn-sub-shots" class="px-3 py-0.5 rounded-md text-[8.5px] font-bold uppercase transition-all">Todos</button>
+                    <button onclick="setCategory('shots_on_target')" id="btn-sub-shots_on_target" class="px-3 py-0.5 rounded-md text-[8.5px] font-bold uppercase transition-all">Al Arco</button>
+                    <button onclick="setCategory('shots_outside_box')" id="btn-sub-shots_outside_box" class="px-3 py-0.5 rounded-md text-[8.5px] font-bold uppercase transition-all">Fuera del Área</button>
                 </div>
 
                 <!-- Venue -->
-                <div id="venue-filter-container" class="flex bg-slate-800 p-1 rounded-xl border border-slate-700 shadow-lg">
-                    <button onclick="setVenue('all')" id="btn-venue-all" class="px-6 py-1 rounded-lg text-[10px] font-black uppercase transition-all">General</button>
-                    <button onclick="setVenue('home')" id="btn-venue-home" class="px-6 py-1 rounded-lg text-[10px] font-black uppercase transition-all text-green-400">Local</button>
-                    <button onclick="setVenue('away')" id="btn-venue-away" class="px-6 py-1 rounded-lg text-[10px] font-black uppercase transition-all text-yellow-400">Visitante</button>
+                <div id="venue-filter-container" class="flex bg-slate-800 p-1 rounded-lg border border-slate-700 shadow-md">
+                    <button onclick="setVenue('all')" id="btn-venue-all" class="px-4 py-0.5 rounded-md text-[9px] font-black uppercase transition-all">General</button>
+                    <button onclick="setVenue('home')" id="btn-venue-home" class="px-4 py-0.5 rounded-md text-[9px] font-black uppercase transition-all text-green-400">Local</button>
+                    <button onclick="setVenue('away')" id="btn-venue-away" class="px-4 py-0.5 rounded-md text-[9px] font-black uppercase transition-all text-yellow-400">Visitante</button>
                 </div>
 
-                <div class="w-px h-6 bg-slate-700"></div>
-
-                <!-- Sort & L5 -->
-                <div class="flex gap-2">
-                    <button onclick="toggleSort()" id="btn-global-sort" class="px-4 py-1.5 rounded-xl bg-slate-900 text-slate-400 flex items-center gap-1 border border-slate-700 text-[10px] font-black uppercase transition-all hover:text-white shadow-lg">
-                        <span id="sort-label-text">Promedio</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg>
+                <div class="w-px h-5 bg-slate-700"></div>
+                <!-- Sort & Match Window (Últimos 5 / Últimos 10) -->
+                <div class="flex gap-1.5">
+                    <button onclick="toggleSort()" id="btn-global-sort" class="px-3 py-1 rounded-lg bg-slate-900 text-slate-400 flex items-center gap-1 border border-slate-700 text-[9px] font-black uppercase transition-all hover:text-white shadow-md">
+                        <span id="sort-label-text">Total</span>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg>
                     </button>
-                    <button onclick="toggleL5()" id="btn-global-l5" class="text-[10px] font-black uppercase px-4 py-1.5 rounded-xl border bg-slate-900 text-slate-400 border-slate-700 hover:text-white transition-all shadow-lg">Ultimos 5</button>
+                    <button onclick="setLimitMatches(5)" id="btn-global-l5" class="text-[9px] font-black uppercase px-3 py-1 rounded-lg border bg-slate-900 text-slate-400 border-slate-700 hover:text-white transition-all shadow-md">Últimos 5</button>
+                    <button onclick="setLimitMatches(10)" id="btn-global-l10" class="text-[9px] font-black uppercase px-3 py-1 rounded-lg border bg-slate-900 text-slate-400 border-slate-700 hover:text-white transition-all shadow-md">Últimos 10</button>
                 </div>
             </div>
         </div>
 
         <!-- RESULTADOS -->
-        <div id="grid-container" class="grid gap-2">
+        <div id="grid-container" class="grid gap-3">
             <!-- El contenido se inyecta via JS -->
         </div>
-    </div>
+    </div> </div>
 {% endblock %}
 
 {% block scripts %}
@@ -92,24 +92,24 @@
     const TEAM_MAP = {{ team_map|safe }};
     function getShortName(name) { return TEAM_MAP[name] || name; }
 
-    // Estado Global
     const state = {
-        mode: 'teams', // teams, players, referees
-        category: 'shots', // shots, headers, cards, fouls
-        subFilter: 'all', // all, target, long
-        venue: 'all', // all, home, away
-        sort: 'avg', // avg, total
-        l5: false
+        mode: 'teams',       // 'teams', 'players', 'referees'
+        category: 'shots',   // 'shots', 'shots_on_target', 'shots_outside_box', etc.
+        venue: 'all',        // 'all', 'home', 'away'
+        sort: 'total',       // 'total', 'avg'
+        limitMatches: null   // null, 5, 10
     };
 
     let pages = { made: 1, against: 1, single: 1 };
     const dataCache = { made: [], against: [], single: [] };
     const perPage = 10;
+    let currentFetchId = 0;
 
-    // Diccionarios de etiquetas
     const LABELS = {
         teams: {
-            shots: { made: 'Tiros Realizados', against: 'Tiros Recibidos' },
+            shots: { made: 'Tiros Realizados (Todos)', against: 'Tiros Recibidos (Todos)' },
+            shots_on_target: { made: 'Tiros al Arco', against: 'Tiros al Arco Recibidos' },
+            shots_outside_box: { made: 'Tiros Fuera del Área', against: 'Tiros Fuera del Área Recibidos' },
             goals: { made: 'Goles a Favor', against: 'Goles en Contra' },
             headers: { made: 'Cabezazos Realizados', against: 'Cabezazos Recibidos' },
             cards: { made: 'Tarjetas Recibidas', against: 'Tarjetas Generadas (Rival)' },
@@ -119,7 +119,9 @@
             offsides: { made: 'Offsides Cometidos', against: 'Offsides Provocados' }
         },
         players: {
-            shots: 'Rematadores',
+            shots: 'Rematadores (Todos los Tiros)',
+            shots_on_target: 'Rematadores (Al Arco)',
+            shots_outside_box: 'Rematadores (Fuera del Área)',
             goals: 'Goleadores',
             assists: 'Asistidores',
             headers: 'Cabezazos',
@@ -131,277 +133,234 @@
             offsides: 'Jugadores en Offside'
         },
         referees: {
-            cards: 'Arbitros con mas Tarjetas',
-            fouls: 'Arbitros con mas Faltas'
+            cards: 'Árbitros con más Tarjetas',
+            fouls: 'Árbitros con más Faltas'
         }
     };
 
-    function init() {
-        updateUI();
-        fetchData();
-    }
+    const PRELOADED_STATS = {{ initial_stats|safe }};
 
-    function resetGlobalState() {
-        state.sort = 'avg';
-        state.l5 = false;
+    function resetPages() {
         pages = { made: 1, against: 1, single: 1 };
     }
 
-    function setMode(m) { 
-        state.mode = m; 
-        resetGlobalState(); 
-        
-        if (m === 'referees') {
-            state.category = 'cards';
-            document.getElementById('venue-filter-container').style.display = 'none';
-            state.venue = 'all';
-        } else {
-            state.category = 'shots';
-            state.subFilter = 'all';
-            document.getElementById('venue-filter-container').style.display = 'flex';
-        }
-        
+    function setMode(mode) { 
+        state.mode = mode; 
+        state.category = (mode === 'referees') ? 'cards' : 'shots';
+        state.venue = 'all';
+        state.sort = 'total';
+        state.limitMatches = null;
+        resetPages();
         updateUI(); 
-        fetchData(); 
+        renderStats(); 
     }
-    function setCategory(c) { state.category = c; resetGlobalState(); updateUI(); fetchData(); }
-    function setSubFilter(s) { state.subFilter = s; pages = { made: 1, against: 1, single: 1 }; updateUI(); fetchData(); }
-    function setVenue(v) { state.venue = v; pages = { made: 1, against: 1, single: 1 }; updateUI(); fetchData(); }
-    
+
+    function setCategory(category) {
+        state.category = category;
+        resetPages();
+        updateUI();
+        renderStats();
+    }
+
+    function setVenue(venue) {
+        state.venue = venue;
+        resetPages();
+        updateUI();
+        renderStats();
+    }
+
     function toggleSort() { 
         state.sort = (state.sort === 'total' ? 'avg' : 'total');
         updateUI();
-        fetchData(); 
+        renderStats(); 
     }
-    
-    function toggleL5() { 
-        state.l5 = !state.l5;
-        pages = { made: 1, against: 1, single: 1 };
+
+    function setLimitMatches(count) {
+        state.limitMatches = (state.limitMatches === count) ? null : count;
+        resetPages();
         updateUI();
-        fetchData(); 
+        renderStats();
     }
 
     function updateUI() {
-        // Modo
+        // Mode buttons
         ['teams', 'players', 'referees'].forEach(m => {
             const btn = document.getElementById(`btn-mode-${m}`);
-            if (state.mode === m) {
-                btn.className = 'px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-active';
-            } else {
-                btn.className = 'px-8 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-inactive';
-            }
+            if (btn) btn.className = `px-6 py-0.5 rounded-lg text-[10px] font-black uppercase transition-all ${state.mode === m ? 'btn-active' : 'btn-inactive'}`;
         });
 
-        // Venue
+        // Venue buttons & container
+        const venueContainer = document.getElementById('venue-filter-container');
+        if (venueContainer) {
+            venueContainer.style.display = (state.mode === 'referees') ? 'none' : 'flex';
+        }
         ['all', 'home', 'away'].forEach(v => {
             const btn = document.getElementById(`btn-venue-${v}`);
             if (btn) {
-                let colorClass = '';
-                if (v === 'home') colorClass = ' text-green-400';
-                if (v === 'away') colorClass = ' text-yellow-400';
-                
-                if (state.venue === v) {
-                    btn.className = 'px-6 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-active';
-                } else {
-                    btn.className = 'px-6 py-1 rounded-xl text-[11px] font-black uppercase transition-all btn-inactive' + colorClass;
-                }
+                let textCol = v === 'home' ? ' text-green-400' : (v === 'away' ? ' text-yellow-400' : '');
+                btn.className = `px-4 py-0.5 rounded-md text-[9px] font-black uppercase transition-all ${state.venue === v ? 'btn-active' : 'btn-inactive' + textCol}`;
             }
         });
 
-        // Categorias
-        const cats = ['shots','goals', 'assists', 'headers', 'cards', 'fouls', 'fouls_received', 'corners', 'tackles', 'offsides'];
-        cats.forEach(c => {
+        // Category buttons visibility & active states
+        const isShotCategory = ['shots', 'shots_on_target', 'shots_outside_box'].includes(state.category);
+
+        const mainCats = ['shots', 'goals', 'assists', 'headers', 'cards', 'fouls', 'fouls_received', 'tackles', 'offsides'];
+        mainCats.forEach(c => {
             const btn = document.getElementById(`btn-cat-${c}`);
+            if (!btn) return;
             let show = true;
-            
-            // Logic for visibility
-            if (state.mode === 'referees' && (c === 'shots' || c === 'goals' || c === 'headers' || c === 'assists' || c === 'fouls_received' || c === 'corners' || c === 'tackles' || c === 'offsides')) show = false;
+            if (state.mode === 'referees' && c !== 'cards' && c !== 'fouls') show = false;
             if (state.mode === 'teams' && (c === 'fouls_received' || c === 'assists')) show = false;
 
-            if (!show) {
-                if (btn) btn.style.display = 'none';
-            } else {
-                if (btn) {
-                    btn.style.display = 'inline-block';
-                    if (state.category === c) {
-                        btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-active';
-                    } else {
-                        btn.className = 'cat-btn px-6 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all btn-inactive';
-                    }
-                }
-            }
+            btn.style.display = show ? 'inline-block' : 'none';
+            const isActive = (c === 'shots' && isShotCategory) || (state.category === c);
+            btn.className = `cat-btn px-4 py-1 rounded-md text-[9.5px] font-black uppercase border transition-all ${isActive ? 'btn-active' : 'btn-inactive'}`;
         });
-        
-        if (state.mode === 'referees' && (state.category === 'shots' || state.category === 'headers' || state.category === 'assists' || state.category === 'fouls_received' || state.category === 'corners' || state.category === 'tackles' || state.category === 'offsides')) {
-            state.category = 'cards';
-            updateUI();
-            return;
-        }
 
+        // Shot Subfilter container & buttons
         const subDiv = document.getElementById('subfilter-container');
-        if (state.category === 'shots') {
-            subDiv.classList.remove('hidden');
-            ['all', 'target', 'long'].forEach(s => {
-                const btn = document.getElementById(`btn-sub-${s}`);
+        if (subDiv) {
+            subDiv.style.display = (isShotCategory && state.mode !== 'referees') ? 'flex' : 'none';
+            ['shots', 'shots_on_target', 'shots_outside_box'].forEach(sc => {
+                const btn = document.getElementById(`btn-sub-${sc}`);
                 if (btn) {
-                    if (state.subFilter === s) {
-                        btn.className = 'px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all bg-sky-500 text-white shadow-md';
-                    } else {
-                        btn.className = 'px-4 py-1 rounded-lg text-[9px] font-bold uppercase transition-all text-slate-400 hover:text-white';
-                    }
+                    btn.className = `px-3 py-0.5 rounded-md text-[8.5px] font-bold uppercase transition-all ${state.category === sc ? 'bg-sky-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`;
                 }
             });
-        } else {
-            subDiv.classList.add('hidden');
         }
 
-        // Sort & L5 buttons UI
-        const btnSort = document.getElementById('btn-global-sort');
+        // Sort label
         const sortLabel = document.getElementById('sort-label-text');
-        if (btnSort && sortLabel) {
+        if (sortLabel) {
             sortLabel.innerText = state.sort === 'total' ? 'Total' : 'Promedio';
-            // Optionally, style it if it's active
-            if (state.sort === 'total') {
-                btnSort.className = 'px-4 py-1.5 rounded-xl bg-sky-500 text-white flex items-center gap-1 border border-transparent text-[10px] font-black uppercase transition-all shadow-lg';
-            } else {
-                btnSort.className = 'px-4 py-1.5 rounded-xl bg-slate-900 text-slate-400 flex items-center gap-1 border border-slate-700 text-[10px] font-black uppercase transition-all hover:text-white shadow-lg';
-            }
         }
 
+        // L5 and L10 buttons
         const btnL5 = document.getElementById('btn-global-l5');
         if (btnL5) {
-            if (state.l5) {
-                btnL5.className = 'text-[10px] font-black uppercase px-4 py-1.5 rounded-xl border transition-all shadow-lg bg-sky-500 text-white border-transparent';
-            } else {
-                btnL5.className = 'text-[10px] font-black uppercase px-4 py-1.5 rounded-xl border transition-all shadow-lg bg-slate-900 text-slate-400 border-slate-700 hover:text-white';
-            }
+            btnL5.className = `text-[9px] font-black uppercase px-3 py-1 rounded-lg border transition-all shadow-md ${state.limitMatches === 5 ? 'bg-sky-500 text-white border-transparent' : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'}`;
+        }
+        const btnL10 = document.getElementById('btn-global-l10');
+        if (btnL10) {
+            btnL10.className = `text-[9px] font-black uppercase px-3 py-1 rounded-lg border transition-all shadow-md ${state.limitMatches === 10 ? 'bg-sky-500 text-white border-transparent' : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'}`;
         }
     }
 
-    let currentFetchId = 0;
-
-    async function fetchData(targetId = null) {
-        const fetchId = ++currentFetchId;
-        const grid = document.getElementById('grid-container');
-        
-        // Ensure correct grid structure
-        if (state.mode === 'teams') {
-            if (!document.getElementById('box-container-made')) renderDoubleGrid();
+    function sortData(list) {
+        if (!list) return [];
+        const arr = [...list];
+        if (state.sort === 'total') {
+            arr.sort((a, b) => b.total - a.total);
         } else {
-            if (!document.getElementById('box-container-single')) renderSingleGrid();
-        }
-        
-        // Loading State (Targeted)
-        const targets = targetId ? [targetId] : (state.mode === 'teams' ? ['made', 'against'] : ['single']);
-        targets.forEach(id => {
-            const el = document.getElementById(`box-container-${id}`);
-            if(el) el.style.opacity = '0.5';
-        });
-
-        try {
-            if (state.mode === 'teams') {
-                const reqs = [];
-                // Si targetId es null, traemos todo. Si no, solo el que cambio.
-                if (!targetId || targetId === 'made') {
-                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=made&limit=${state.l5?5:''}&order_by=${state.sort}&venue=${state.venue}`).then(r=>r.json()).then(d => { dataCache.made = d; }));
-                }
-                if (!targetId || targetId === 'against') {
-                    reqs.push(fetch(`/api/team_stats?category=${state.category}&filter=${state.subFilter}&side=against&limit=${state.l5?5:''}&order_by=${state.sort}&venue=${state.venue}`).then(r=>r.json()).then(d => { dataCache.against = d; }));
-                }
-                
-                await Promise.all(reqs);
-                if (currentFetchId !== fetchId) return;
-
-                if (state.mode === 'teams') {
-                   // Re-render boxes
-                   if (!targetId || targetId === 'made') renderBox(document.getElementById('box-container-made'), 'made', LABELS.teams[state.category].made, true);
-                   if (!targetId || targetId === 'against') renderBox(document.getElementById('box-container-against'), 'against', LABELS.teams[state.category].against, true);
-                }
-
-            } else {
-                let url = '';
+            arr.sort((a, b) => {
                 if (state.mode === 'players') {
-                    // Limite a 100 (10 paginas de 10)
-                    url = `/api/player_stats?rank_type=${state.category}&filter=${state.subFilter}&order_by=${state.sort}&limit=50&venue=${state.venue}`;
-                    if (state.l5) url += '&limit_matches=5';
-                } else {
-                    url = `/api/referee_stats?category=${state.category}&order_by=${state.sort}`;
-                    if (state.l5) url += '&limit=5';
+                    const aMin = (a.minutes_played || 0) >= 150 ? 1 : 0;
+                    const bMin = (b.minutes_played || 0) >= 150 ? 1 : 0;
+                    if (aMin !== bMin) return bMin - aMin;
                 }
-                
-                const data = await fetch(url).then(r => r.json());
-                if (currentFetchId !== fetchId) return;
-                dataCache.single = data;
-                
-                if (state.mode !== 'teams') {
-                   renderBox(document.getElementById('box-container-single'), 'single', LABELS[state.mode][state.category], false);
-                }
-            }
-        } catch (e) {
-            if (currentFetchId !== fetchId) return;
-            console.error(e);
-            grid.innerHTML = '<div class="text-center text-red-500 py-20 font-bold col-span-2">Error al cargar datos.</div>';
-        } finally {
-            if (currentFetchId === fetchId) {
-                targets.forEach(id => {
-                    const el = document.getElementById(`box-container-${id}`);
-                    if(el) el.style.opacity = '1';
-                });
-            }
+                return b.avg - a.avg;
+            });
+        }
+        if (state.mode === 'players') {
+            const cap = state.limitMatches === 5 ? 10 : (state.limitMatches === 10 ? 30 : 50);
+            return arr.slice(0, cap);
+        }
+        return arr;
+    }
+
+    function renderStats() {
+        const limKey = state.limitMatches ? String(state.limitMatches) : 'all';
+
+        if (state.mode === 'teams') {
+            if (!document.getElementById('box-container-made')) renderGridStructure('double');
+
+            const catData = (PRELOADED_STATS.teams && PRELOADED_STATS.teams[state.category]) || {};
+            const madeRaw = (catData.made && catData.made[limKey] && catData.made[limKey][state.venue]) || [];
+            const againstRaw = (catData.against && catData.against[limKey] && catData.against[limKey][state.venue]) || [];
+
+            dataCache.made = sortData(madeRaw);
+            dataCache.against = sortData(againstRaw);
+
+            const catLabels = LABELS.teams[state.category] || { made: 'A Favor', against: 'En Contra' };
+            renderBox('box-container-made', 'made', catLabels.made, true);
+            renderBox('box-container-against', 'against', catLabels.against, true);
+
+        } else if (state.mode === 'players') {
+            if (!document.getElementById('box-container-single')) renderGridStructure('single');
+
+            const catData = (PRELOADED_STATS.players && PRELOADED_STATS.players[state.category]) || {};
+            const venueData = catData[state.venue] || {};
+            const rawList = venueData[limKey] || [];
+
+            dataCache.single = sortData(rawList);
+
+            const titleSingle = (LABELS[state.mode] && LABELS[state.mode][state.category]) || 'Ranking';
+            renderBox('box-container-single', 'single', titleSingle, false);
+
+        } else if (state.mode === 'referees') {
+            if (!document.getElementById('box-container-single')) renderGridStructure('single');
+
+            const catData = (PRELOADED_STATS.referees && PRELOADED_STATS.referees[state.category]) || {};
+            const rawList = catData[limKey] || [];
+
+            dataCache.single = sortData(rawList);
+
+            const titleSingle = (LABELS[state.mode] && LABELS[state.mode][state.category]) || 'Ranking';
+            renderBox('box-container-single', 'single', titleSingle, false);
         }
     }
 
-    function renderDoubleGrid() {
+    function renderGridStructure(type) {
         const grid = document.getElementById('grid-container');
-        grid.className = 'grid grid-cols-1 lg:grid-cols-2 gap-8';
-        grid.innerHTML = '<div id="box-container-made"></div><div id="box-container-against"></div>';
-        // Los datos pueden no estar listos, renderBox maneja array vacio
-        renderBox(document.getElementById('box-container-made'), 'made', LABELS.teams[state.category].made, true);
-        renderBox(document.getElementById('box-container-against'), 'against', LABELS.teams[state.category].against, true);
-    }
-
-    function renderSingleGrid() {
-        const grid = document.getElementById('grid-container');
-        grid.className = 'grid grid-cols-1 gap-8 max-w-4xl mx-auto w-full';
-        grid.innerHTML = '<div id="box-container-single"></div>';
-        renderBox(document.getElementById('box-container-single'), 'single', LABELS[state.mode][state.category], false);
+        if (type === 'double') {
+            grid.className = 'grid grid-cols-1 lg:grid-cols-2 gap-4';
+            grid.innerHTML = '<div id="box-container-made"></div><div id="box-container-against"></div>';
+        } else {
+            grid.className = 'grid grid-cols-1 gap-4 max-w-3xl mx-auto w-full';
+            grid.innerHTML = '<div id="box-container-single"></div>';
+        }
     }
 
     function changeLocalPage(id, delta) {
-        const total = Math.ceil(dataCache[id].length / perPage) || 1;
+        const total = Math.ceil((dataCache[id] || []).length / perPage) || 1;
         let next = pages[id] + delta;
         if (next >= 1 && next <= total) {
             pages[id] = next;
             const container = document.getElementById(`box-container-${id}`);
-            renderBox(container, id, container.dataset.title, container.dataset.isteam === 'true');
+            if (container) {
+                renderBox(container, id, container.dataset.title, container.dataset.isteam === 'true');
+            }
         }
     }
 
-    function renderBox(container, id, title, isTeam) {
+    function renderBox(containerId, id, title, isTeam) {
+        const container = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
         if (!container) return;
         container.dataset.title = title;
         container.dataset.isteam = isTeam;
+
         const data = dataCache[id] || [];
-        const page = pages[id];
+        const page = pages[id] || 1;
         const start = (page - 1) * perPage;
         const visible = data.slice(start, start + perPage);
         const totalPages = Math.ceil(data.length / perPage) || 1;
 
         container.innerHTML = `
-            <div class="bg-slate-800/40 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col overflow-hidden">
-                <div class="bg-slate-800/50 px-6 py-4 border-b border-slate-700/50 flex justify-between items-center">
-                    <h3 class="font-black text-sky-400 uppercase text-[15px] tracking-widest">${title}</h3>
+            <div class="bg-slate-800/40 rounded-xl border border-slate-700/50 shadow-xl flex flex-col overflow-hidden">
+                <div class="bg-slate-800/50 p-3 border-b border-slate-700/50 flex justify-between items-center">
+                    <h3 class="font-black text-sky-400 uppercase text-[13px] tracking-wider">${title}</h3>
                 </div>
-                <div class="py-2 flex-1 space-y-0">
-                    ${visible.map((item, i) => renderRow(item, start + i, isTeam)).join('') || '<div class="text-center text-slate-600 italic py-10">Sin datos</div>'}
+                <div class="py-1 space-y-0.5 px-1.5 flex-1">
+                    ${visible.map((item, i) => renderRow(item, start + i, isTeam)).join('') || '<div class="text-center text-slate-600 italic py-6 text-xs">Sin datos</div>'}
                 </div>
-                <div class="p-4 bg-slate-900/30 border-t border-slate-700/30 flex justify-between items-center">
-                    <button onclick="changeLocalPage('${id}', -1)" class="p-2 rounded-lg bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" ${page === 1 ? 'disabled' : ''}>
-                        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+                <div class="px-3 py-1.5 bg-slate-900/30 border-t border-slate-700/30 flex justify-between items-center">
+                    <button onclick="changeLocalPage('${id}', -1)" class="py-1 px-2  rounded-md bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" ${page === 1 ? 'disabled' : ''}>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
                     </button>
-                    <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">${page} / ${totalPages}</span>
-                    <button onclick="changeLocalPage('${id}', 1)" class="p-2 rounded-lg bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" ${page === totalPages ? 'disabled' : ''}>
-                        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+                    <span class="text-[11px] font-black text-slate-500 uppercase tracking-wider">${page} / ${totalPages}</span>
+                    <button onclick="changeLocalPage('${id}', 1)" class="py-1 px-2 rounded-md bg-slate-800 text-sky-500 hover:bg-sky-600 hover:text-white disabled:opacity-0 transition-all" ${page === totalPages ? 'disabled' : ''}>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
                     </button>
                 </div>
             </div>
@@ -409,53 +368,64 @@
     }
 
     function renderRow(item, i, isTeam) {
+        const rank = i + 1;
         let colorClass = 'text-slate-500';
-        const idx = i; // Posicion real (0-indexed)
-        const rank = idx + 1;
+        if (rank === 1) colorClass = 'text-amber-400 font-black';
+        else if (rank === 2) colorClass = 'text-slate-300 font-black';
+        else if (rank === 3) colorClass = 'text-amber-600 font-black';
+        else if (rank <= 10) colorClass = 'text-green-400 font-bold';
+        else if (rank <= 20) colorClass = 'text-sky-400 font-medium';
+        else colorClass = 'text-slate-400 font-normal';
+
+        let imgHtml = ''; 
+        let mainText = ''; 
+        let subText = ''; 
+        let link = '#';
+        let statSuffix = '/ 90m';
 
         if (state.mode === 'teams' || isTeam) {
-            if (rank <= 10) colorClass = 'text-green-400';
-            else if (rank <= 20) colorClass = 'text-blue-400';
-            else if (rank <= 30) colorClass = 'text-red-400';
-        } else if (state.mode === 'players') {
-            if (rank <= 10) colorClass = 'text-green-400';
-            else colorClass = 'text-blue-400';
+            imgHtml = `<img src="/static/${item.id}_xsmall.png" onerror="this.onerror=null; this.src='/static/none.png'" class="w-7 h-7 object-contain drop-shadow">`;
+            mainText = getShortName(item.name); 
+            link = `/team/${item.id}`;
+            statSuffix = '/ PJ';
         } else if (state.mode === 'referees') {
-            if (rank <= 5) colorClass = 'text-green-400';
-            else colorClass = 'text-blue-400';
-        }
-
-        let imgHtml = ''; let mainText = ''; let subText = ''; let link = '#';
-
-        if (state.mode === 'teams' || isTeam) {
-            imgHtml = `<img src="/static/${item.id}_xsmall.png" onerror="this.src='/static/none.png'" class="w-8 h-8 object-contain">`;
-            mainText = getShortName(item.name); link = `/team/${item.id}`;
-        } else if (state.mode === 'referees') {
-            mainText = item.name; link = `/referee/${item.name}`;
+            mainText = item.name; 
+            link = `/referee/${item.name}`;
+            statSuffix = '/ partido';
         } else {
             mainText = item.name;
-            subText = `<a href="/team/${item.t_id}" class="text-[12px] text-sky-500 font-bold uppercase hover:underline flex items-center gap-1 mt-0.5"><img src="/static/${item.t_id}_xsmall.png" class="w-3 h-3 object-contain"> ${getShortName(item.t_name)}</a>`;
+            const teamName = item.t_name ? getShortName(item.t_name) : '';
+            subText = item.t_id ? `<a href="/team/${item.t_id}" class="text-[10px] text-sky-400 font-bold uppercase hover:underline flex items-center gap-1 leading-none"><img src="/static/${item.t_id}_xsmall.png" onerror="this.onerror=null; this.src='/static/none.png'" class="w-3 h-3 object-contain inline"> ${teamName}</a>` : '';
+            statSuffix = '/ 90m';
         }
 
         return `
-            <div class="flex justify-between items-center bg-slate-900/40 p-2 rounded-xl border border-slate-800/50 hover:border-slate-700 transition-all group">
-                <div class="flex items-center gap-4 overflow-hidden">
-                    <span class="text-lg font-black ${colorClass} w-6 text-center">#${rank}</span>
+            <div class="flex justify-between items-center bg-slate-900/50 px-2.5 py-2 rounded-lg border border-slate-800/80 hover:border-slate-700 transition-all group">
+                <div class="flex items-center gap-2.5 overflow-hidden">
+                    <span class="text-[13px] ${colorClass} w-5 text-center">#${rank}</span>
                     ${imgHtml}
                     <div class="flex flex-col truncate">
-                        <a href="${link}" class="text-[15px] font-bold text-slate-200 group-hover:text-sky-400 transition-colors truncate">${mainText}</a>
+                        <a href="${link}" class="text-[14px] font-bold text-slate-100 group-hover:text-sky-400 transition-colors truncate leading-tight">${mainText}</a>
                         ${subText}
                     </div>
                 </div>
-                
 
-                <span class="text-[13px] font-bold text-slate-500"><span class="text-[15px] font-black text-white">${item.total}</span> en
-                <span class="text-[15px] font-black text-white">${item.pj}</span> PJ | <span class="text-emerald-400">${item.avg}</span> / 90 </span>
-
+                <div class="flex items-center gap-1.5 text-right min-w-[140px] justify-end">
+                    <span class="text-[11px] font-bold text-slate-400">
+                        <span class="text-[13px] font-black text-white">${item.total}</span> en 
+                        <span class="text-[13px] font-black text-white">${item.pj}</span> PJ
+                    </span>
+                    <span class="text-slate-600 text-xs">|</span>
+                    <span class="text-[12px]">
+                        <span class="font-black text-emerald-400 text-[13px]">${item.avg}</span> 
+                        <span class="text-[9px] text-slate-400 uppercase font-bold">${statSuffix}</span>
+                    </span>
+                </div>
             </div>
         `;
     }
 
-    init();
+    updateUI();
+    renderStats();
     </script>
 {% endblock %}

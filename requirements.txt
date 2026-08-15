@@ -1,1 +1,6 @@
 Flask
+pandas
+requests
+beautifulsoup4
+curl_cffi
+gunicorn

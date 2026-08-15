@@ -2,115 +2,450 @@
 
 {% block title %}{{ team_name }} - ARG STATS{% endblock %}
 
-{% block head %}
+{% block content %}
 <style>
+    :root {
+        --pitch-green: #1a4d2e;
+        --line-soft: rgba(255, 255, 255, 0.2);
+        --line-bright: rgba(255, 255, 255, 0.8);
+    }
+
     .custom-scroll::-webkit-scrollbar { width: 6px; }
     .custom-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 10px; }
     .custom-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; border: 1px solid #1e293b; }
     .custom-scroll::-webkit-scrollbar-thumb:hover { background: #0ea5e9; }
     .custom-scroll { scrollbar-width: thin; scrollbar-color: #334155 #1e293b; }
+
+    /* SCROLLBAR AZUL PARA BANCOS */
+    .custom-blue-scroll::-webkit-scrollbar { width: 5px; }
+    .custom-blue-scroll::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); border-radius: 10px; }
+    .custom-blue-scroll::-webkit-scrollbar-thumb { background: #0ea5e9; border-radius: 10px; }
+    .custom-blue-scroll::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+    .custom-blue-scroll { scrollbar-width: thin; scrollbar-color: #0ea5e9 rgba(15, 23, 42, 0.6); }
+
     .player-card { 
         background: rgba(15, 23, 42, 0.6); 
-        padding: 0.75rem 1rem; /* Un poco mas de aire que en la pizarra */
+        padding: 0.65rem 0.9rem; 
         border-radius: 1rem; 
         border: 1px solid #1e293b; 
         transition: all 0.2s; 
         cursor: pointer; 
-        }
+    }
     .player-card:hover { 
         border-color: #38bdf8; 
         background: rgba(56, 189, 248, 0.05); 
     }
-    #player-ranking-list {  min-height: 500px; display: flex; flex-direction: column; }
     
+    {% set pitch_width = 380 %}
+    {% set pitch_height = pitch_width * 1.430 %}
+
+    .pitch {
+        position: relative;
+        max-width: 100%;
+        width: {{ pitch_width }}px;
+        margin: auto;
+        aspect-ratio: {{ pitch_width }} / {{ pitch_height }};
+        background-color: var(--pitch-green);
+        border: 2px solid var(--line-soft);
+        border-radius: 24px;
+        /*overflow: hidden;*/
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+
+        /* --- DIBUJO DE LÍNEAS Y MEDIALUNAS --- */
+        background-image:
+            /* 1. Línea de gol SUPERIOR resaltada (solo en el centro) */
+            linear-gradient(to right, var(--line-bright), var(--line-bright)),
+            /* 2. Línea de gol INFERIOR resaltada (solo en el centro) */
+            linear-gradient(to right, var(--line-bright), var(--line-bright)),
+            /* 3. Círculo central */
+            radial-gradient(circle at 50% 50%, transparent 14%, var(--line-soft) 14.5%, var(--line-soft) 15.5%, transparent 16%),
+            /* 4. Línea de medio campo */
+            linear-gradient(to bottom, transparent 49.5%, var(--line-soft) 50%, var(--line-soft) 50.5%, transparent 51%),
+            /* 5. Medialuna Superior */
+            radial-gradient(circle at 50% 15%, transparent 7%, var(--line-soft) 7%, var(--line-soft) 7.5%, transparent 7.5%),
+            /* 6. Medialuna Inferior */
+            radial-gradient(circle at 50% 85%, transparent 7%, var(--line-soft) 7%, var(--line-soft) 7.5%, transparent 7.5%);
+
+        /* Posicionamiento de las líneas de gol resaltadas */
+        background-size: 25% 4px, 25% 4px, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+        background-position: top center, bottom center, center, center, center, center;
+        background-repeat: no-repeat;
+    }
+
+    /* ÁREAS GRANDES */
+    .pitch::before,
+    .pitch::after {
+        content: "";
+        position: absolute;
+        left: 20%;
+        width: 60%;
+        height: 15%;
+        border: 2px solid var(--line-soft);
+        background-color: var(--pitch-green);
+        z-index: 1;
+    }
+
+    .pitch::before {
+        top: 0;
+        border-top: 0;
+    }
+
+    .pitch::after {
+        bottom: 0;
+        border-bottom: 0;
+    }
+
+    .pitch.pitch-heatmap-dark {
+        background-color: #070a14 !important;
+        transition: background-color 0.3s ease;
+    }
+    .pitch.pitch-heatmap-dark::before,
+    .pitch.pitch-heatmap-dark::after {
+        background-color: #070a14 !important;
+        border-color: rgba(255, 255, 255, 0.25);
+        transition: background-color 0.3s ease;
+    }
+
+        /* --- REPRESENTACIÓN VISUAL DE LOS ARCOS (Porterías) --- */
+    .goal-post {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 15%;
+        /* Debe coincidir con el resaltado de la línea de gol */
+        height: 4px;
+        background: white;
+        box-shadow: 0 0 10px white;
+        z-index: 10;
+    }
+
+    .goal-post.top {
+        top: -2px;
+        border-radius: 0 0 4px 4px;
+    }
+
+    .goal-post.bottom {
+        bottom: -2px;
+        border-radius: 4px 4px 0 0;
+    }
+
+    .goal-post.left {
+        left: -2px;
+        right: auto;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 15%;
+        border-radius: 0 4px 4px 0;
+    }
+
+    .goal-post.right {
+        left: auto;
+        right: -2px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 15%;
+        border-radius: 4px 0 0 4px;
+    }
+
+    .player-dot {
+        position: absolute;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 900;
+        border: 2px solid white;
+        cursor: grab;
+        z-index: 10;
+        transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+        user-select: none;
+    }
+
+    .player-dot[style*="top:"] {
+        transform: translate(-50%, -100%);
+    }
+
+    .player-dot[style*="bottom:"] {
+        transform: translate(-50%, 50%);
+    }
+
+    .player-name {
+        position: absolute;
+        top: 100%;
+        margin-top: 4px;
+        white-space: nowrap;
+        background: rgba(15, 23, 42, 0.95);
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        border: 1px solid #334155;
+    }
+
+    .card-badge {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        width: 12px;
+        height: 16px;
+        border-radius: 2px;
+        border: 1px solid rgba(0, 0, 0, 0.3);
+    }
+
+    .card-yellow {
+        background-color: #fbbf24;
+    }
+
+    .card-red {
+        background-color: #ef4444;
+    }
+
+    .card-yellowred {
+        background: linear-gradient(135deg, #fbbf24 50%, #ef4444 50%);
+    }
+
+    .highlight-player {
+        border-color: #f8fafc !important;
+        box-shadow: 0 0 25px #f8fafc !important;
+        z-index: 100;
+    }
 </style>
-{% endblock %}
 
-{% block body_class %}p-8 font-sans{% endblock %}
 
-{% block content %}
-    <div class="max-w-[80dvw] mx-auto space-y-12">
-        <!-- HEADER -->
-        <header class="flex justify-between items-center">
-            <div>
-                <a href="/" class="text-sky-500 font-black uppercase text-xs tracking-widest hover:underline">← Volver a Partidos</a>
-                <div class="flex items-center gap-6 mt-2">
-                    <img src="{{ url_for('static', filename=team_id ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-24 h-24 object-contain drop-shadow-2xl">
-                    <h1 class="text-6xl font-black italic uppercase tracking-tighter text-white">{{ get_short_name(team_name) }}</h1>
+<div class="max-w-[95dvw] mx-auto space-y-6">
+
+    <!-- HEADER DE EQUIPO -->
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/60 p-6 rounded-3xl border border-slate-800 backdrop-blur-md">
+        <div>
+            <a href="/" class="text-sky-500 font-black uppercase text-xs tracking-widest hover:underline inline-flex items-center gap-1 mb-2">← Volver a Partidos</a>
+            <div class="flex items-center gap-5">
+                <img src="{{ url_for('static', filename=team_id ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl">
+                <div>
+                    <h1 class="text-3xl md:text-5xl font-black italic uppercase tracking-tighter text-white">{{ get_short_name(team_name) }}</h1>
+                    <span class="text-xs font-bold text-slate-400">ID de Equipo: <code class="text-sky-400">{{ team_id }}</code></span>
                 </div>
             </div>
-            <div class="bg-slate-800 p-4 rounded-3xl border border-slate-700 text-center min-w-[200px]">
-                <span class="text-[10px] font-black text-slate-500 uppercase block mb-1">ID de Equipo</span>
-                <span class="text-2xl font-mono font-black text-sky-400">{{ team_id }}</span>
-            </div>
-        </header>
+        </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+        <!-- PESTAÑAS PRINCIPALES DEL EQUIPO -->
+        <div class="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 gap-2 self-stretch md:self-auto">
+            <button onclick="switchTeamTab('matches')" id="team-tab-matches" class="flex-1 md:flex-initial px-6 py-2.5 rounded-xl font-black uppercase text-xs tracking-wider transition-all bg-sky-500 text-white shadow-lg flex items-center justify-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                Partidos
+            </button>
+            <button onclick="switchTeamTab('stats')" id="team-tab-stats" class="flex-1 md:flex-initial px-6 py-2.5 rounded-xl font-black uppercase text-xs tracking-wider transition-all text-slate-400 hover:text-white flex items-center justify-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                Estadísticas
+            </button>
+        </div>
+    </header>
 
-            <!-- ULTIMOS PARTIDOS -->
-            <div class="space-y-6">
-                <div class="flex justify-between items-center border-l-4 border-slate-500 pl-4">
-                    <h2 class="text-xl font-black uppercase italic tracking-tighter">Partidos</h2>
-                    <div class="flex bg-slate-800 p-1 rounded-full border border-slate-700 text-[9px]">
-                        <button onclick="showMatches('finished')" id="btn-finished" class="px-3 py-1 rounded-full font-black uppercase transition-all bg-sky-500 text-white shadow-lg">Pasados</button>
-                        <button onclick="showMatches('upcoming')" id="btn-upcoming" class="px-3 py-1 rounded-full font-black uppercase transition-all text-slate-500 hover:text-white">Proximos</button>
+    <!-- ========================================================================== -->
+    <!-- PESTAÑA 1: PARTIDOS (Explorador Interactivo de Partido, Alineación y Tiros) -->
+    <!-- ========================================================================== -->
+    <div id="team-tab-content-matches" class="space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- COLUMNA 1: LISTA DE PARTIDOS -->
+            <div class="lg:col-span-4 space-y-4 bg-slate-900/40 p-4 rounded-3xl border border-slate-800 flex flex-col min-h-[680px]">
+                <div class="flex justify-between items-center border-l-4 border-sky-500 pl-3 py-1">
+                    <h2 class="text-lg font-black uppercase italic tracking-tighter text-white">Partidos</h2>
+                    <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
+                        <button onclick="showTeamMatches('finished')" id="btn-team-finished" class="px-3 py-1 rounded-lg font-black uppercase transition-all bg-sky-500 text-white shadow">Pasados</button>
+                        <button onclick="showTeamMatches('upcoming')" id="btn-team-upcoming" class="px-3 py-1 rounded-lg font-black uppercase transition-all text-slate-500 hover:text-white">Próximos</button>
                     </div>
                 </div>
-                
-                <!-- LISTA PARTIDOS FINALIZADOS -->
-                <div id="matches-finished" class="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scroll">
+
+                <!-- LISTA PARTIDOS PASADOS -->
+                <div id="team-matches-finished" class="space-y-2.5 max-h-[640px] overflow-y-auto pr-1 custom-scroll flex-1">
                     {% for m in matches_finished %}
-                    <a href="/match/{{ m.id }}" class="block bg-slate-900/50 p-4 rounded-2xl border border-slate-800 hover:border-sky-500 transition-all">
-                        <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase mb-2">
+                    <div onclick="selectTeamMatch('{{ m.id }}', event)" id="team-match-card-{{ m.id }}" class="team-match-card bg-slate-900/80 p-3.5 rounded-2xl border border-slate-800 hover:border-sky-500 cursor-pointer transition-all space-y-2 group">
+                        <div class="flex justify-between text-[10px] font-black text-slate-400 uppercase">
                             <span>{{ m.date[:10] }}</span>
-                            <span>{{ m.tournament }} Fecha {{ m.gameweek }}</span>
+                            <span class="text-sky-400">{{ m.tournament }} {% if m.gameweek| int < 17 %}Fecha {{ m.gameweek }}{%elif m.gameweek == "17"%}1/8{% elif m.gameweek == "18" %}1/4{% elif m.gameweek == "19" %}1/2{% elif m.gameweek == "20" %}Final{% endif %}</span>
                         </div>
-                        <div class="flex justify-between items-center text-[14px]">
-                            <div class="flex items-center gap-2 w-[140px]">
-                                <img src="{{ url_for('static', filename=m.id_home_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
-                                <span class="font-bold whitespace-nowrap overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_home_team|string == team_id|string else 'text-slate-400' }}">{{ get_short_name(m.home_team) }}</span>
+                        <div class="flex justify-between items-center text-[13px]">
+                            <div class="flex items-center gap-2 w-[110px] min-w-0">
+                                <img src="{{ url_for('static', filename=m.home_team_id ~ '.png') }}" onerror="this.onerror=null; this.src='/static/none.png'" class="w-5 h-5 object-contain shrink-0">
+                                <span class="font-bold truncate {{ 'text-sky-400 font-black' if m.home_team_id|string == team_id|string else 'text-slate-300' }}">{{ get_short_name(m.home_team) }}</span>
                             </div>
-                            <span class="bg-slate-800 px-3 py-1 rounded-lg font-mono font-black">{{ m.score or 'VS' }}</span>
-                            <div class="flex items-center gap-2 w-[140px] justify-end">
-                                <span class="text-right font-bold whitespace-nowrap overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_away_team|string == team_id|string else 'text-slate-400' }}">{{ get_short_name(m.away_team) }}</span>
-                                <img src="{{ url_for('static', filename=m.id_away_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
+                            <span class="bg-slate-950 px-2.5 py-0.5 rounded-lg font-mono font-black text-white text-xs border border-slate-800">{{ m.score or 'VS' }}</span>
+                            <div class="flex items-center gap-2 w-[110px] min-w-0 justify-end">
+                                <span class="text-right font-bold truncate {{ 'text-sky-400 font-black' if m.away_team_id|string == team_id|string else 'text-slate-300' }}">{{ get_short_name(m.away_team) }}</span>
+                                <img src="{{ url_for('static', filename=m.away_team_id ~ '.png') }}" onerror="this.onerror=null; this.src='/static/none.png'" class="w-5 h-5 object-contain shrink-0">
                             </div>
                         </div>
-                    </a>
+                        <div class="flex justify-between items-center pt-1 border-t border-slate-800/60">
+                            <span class="text-[9px] font-bold text-slate-500 uppercase group-hover:text-sky-400 transition-colors">Ver Pizarra</span>
+                            <a href="/match/{{ m.id }}" onclick="event.stopPropagation()" class="text-[10px] font-black text-sky-400 hover:text-sky-300 hover:underline flex items-center gap-1 uppercase">
+                                Abrir Partido ↗
+                            </a>
+                        </div>
+                    </div>
                     {% else %}
-                    <p class="text-center text-xs text-slate-500 italic py-4">No hay partidos finalizados.</p>
+                    <p class="text-center text-xs text-slate-500 italic py-6">No hay partidos finalizados.</p>
                     {% endfor %}
                 </div>
 
-                <!-- LISTA PARTIDOS PROXIMOS -->
-                <div id="matches-upcoming" class="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scroll hidden">
+                <!-- LISTA PARTIDOS PRÓXIMOS -->
+                <div id="team-matches-upcoming" class="space-y-2.5 max-h-[640px] overflow-y-auto pr-1 custom-scroll flex-1 hidden">
                     {% for m in matches_upcoming %}
-                    <a href="/match/{{ m.id }}" class="block bg-slate-900/50 p-4 rounded-2xl border border-slate-800 hover:border-sky-500 transition-all">
-                        <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase mb-2">
+                    <div onclick="selectTeamMatch('{{ m.id }}', event)" id="team-match-card-{{ m.id }}" class="team-match-card bg-slate-900/80 p-3.5 rounded-2xl border border-slate-800 hover:border-sky-500 cursor-pointer transition-all space-y-2 group">
+                        <div class="flex justify-between text-[10px] font-black text-slate-400 uppercase">
                             <span>{{ m.date[:10] }}</span>
-                            <span>{{ m.tournament }} Fecha {{ m.gameweek }}</span>
+                            <span class="text-sky-400">{{ m.tournament }} {% if m.gameweek |int < 17 %}Fecha {{ m.gameweek }}{%elif m.gameweek == "17"%}1/8{% elif m.gameweek == "18" %}1/4{% elif m.gameweek == "19" %}1/2{% elif m.gameweek == "20" %}Final{% endif %}</span>
                         </div>
-                        <div class="flex justify-between items-center text-[14px]">
-                            <div class="flex items-center gap-2 w-[140px]">
-                                <img src="{{ url_for('static', filename=m.id_home_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
-                                <span class="font-bold whitespace-nowrap overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_home_team|string == team_id|string else 'text-slate-400' }}">{{ get_short_name(m.home_team) }}</span>
+                        <div class="flex justify-between items-center text-[13px]">
+                            <div class="flex items-center gap-2 w-[110px] min-w-0">
+                                <img src="{{ url_for('static', filename=m.home_team_id ~ '.png') }}" onerror="this.onerror=null; this.src='/static/none.png'" class="w-5 h-5 object-contain shrink-0">
+                                <span class="font-bold truncate {{ 'text-sky-400 font-black' if m.home_team_id|string == team_id|string else 'text-slate-300' }}">{{ get_short_name(m.home_team) }}</span>
                             </div>
-                            <span class="bg-slate-800 px-3 py-1 rounded-lg font-mono font-black text-emerald-400 animate-pulse">VS</span>
-                            <div class="flex items-center gap-2 w-[140px] justify-end">
-                                <span class="text-right font-bold whitespace-nowrap overflow-hidden text-ellipsis {{ 'text-sky-400' if m.id_away_team|string == team_id|string else 'text-slate-400' }}">{{ get_short_name(m.away_team) }}</span>
-                                <img src="{{ url_for('static', filename=m.id_away_team ~ '.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-6 h-6 object-contain">
+                            <span class="bg-slate-950 px-2.5 py-0.5 rounded-lg font-mono font-black text-emerald-400 text-xs border border-slate-800 animate-pulse">VS</span>
+                            <div class="flex items-center gap-2 w-[110px] min-w-0 justify-end">
+                                <span class="text-right font-bold truncate {{ 'text-sky-400 font-black' if m.away_team_id|string == team_id|string else 'text-slate-300' }}">{{ get_short_name(m.away_team) }}</span>
+                                <img src="{{ url_for('static', filename=m.away_team_id ~ '.png') }}" onerror="this.onerror=null; this.src='/static/none.png'" class="w-5 h-5 object-contain shrink-0">
                             </div>
                         </div>
-                    </a>
+                        <div class="flex justify-between items-center pt-1 border-t border-slate-800/60">
+                            <span class="text-[9px] font-bold text-slate-500 uppercase group-hover:text-sky-400 transition-colors">Ver Pizarra</span>
+                            <a href="/match/{{ m.id }}" onclick="event.stopPropagation()" class="text-[10px] font-black text-sky-400 hover:text-sky-300 hover:underline flex items-center gap-1 uppercase">
+                                Abrir Partido ↗
+                            </a>
+                        </div>
+                    </div>
                     {% else %}
-                    <p class="text-center text-xs text-slate-500 italic py-4">No hay partidos proximos programados.</p>
+                    <p class="text-center text-xs text-slate-500 italic py-6">No hay partidos próximos programados.</p>
                     {% endfor %}
                 </div>
             </div>
-            <!-- POSICIONES GLOBALES -->
-            <div class="space-y-6">
-                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-sky-500 pl-4">Posiciones en Estadisticas</h2>
-                {# Macro para definir el color de la posicion basado en tu funcion #}
+
+            <!-- COLUMNA 2: PIZARRA DE ALINEACIÓN TÁCTICA -->
+            <div class="lg:col-span-4 bg-slate-900/40 p-5 rounded-3xl border border-slate-800 flex flex-col items-center justify-between min-h-[680px]">
+                <div class="w-full flex justify-between items-center border-b border-slate-800 pb-3 mb-2">
+                    <div class="flex items-center gap-2" id="pitch-home-team-label">
+                        <span class="text-xs font-black uppercase text-sky-400">Local</span>
+                    </div>
+                    <a id="selected-match-link" href="#" class="text-xs font-black uppercase bg-sky-600 hover:bg-sky-500 text-white px-3 py-1 rounded-xl transition-all shadow">
+                        Ir al Partido ↗
+                    </a>
+                    <div class="flex items-center gap-2" id="pitch-away-team-label">
+                        <span class="text-xs font-black uppercase text-red-400">Visita</span>
+                    </div>
+                </div>
+
+                <div class="relative w-full flex justify-center my-auto">
+                    <div class="pitch" id="team-soccer-pitch">
+                        <div id="team-layer-lineup" class="absolute inset-0 w-full h-full"></div>
+                    </div>
+                </div>
+
+                <!-- BANCOS DE SUPLENTES CON SCROLLBAR AZUL -->
+                <div class="w-full grid grid-cols-2 gap-3 pt-3 border-t border-slate-800 text-[11px]">
+                    <div class="bg-slate-950 p-2.5 rounded-2xl border border-slate-800/80">
+                        <span class="text-[9px] font-black uppercase text-sky-400 block mb-1">Banco Local</span>
+                        <div id="team-home-subs" class="space-y-1 max-h-[90px] overflow-y-auto custom-blue-scroll text-slate-300 pr-1"></div>
+                    </div>
+                    <div class="bg-slate-950 p-2.5 rounded-2xl border border-slate-800/80 text-right">
+                        <span class="text-[9px] font-black uppercase text-red-400 block mb-1">Banco Visita</span>
+                        <div id="team-away-subs" class="space-y-1 max-h-[90px] overflow-y-auto custom-blue-scroll text-slate-300 pr-1"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLUMNA 3: MAPA DE TIROS Y CALOR DE ESE PARTIDO -->
+            <div class="lg:col-span-4 bg-slate-900/40 p-5 rounded-3xl border border-slate-800 flex flex-col justify-between min-h-[680px]">
+                <div class="w-full flex justify-between items-center border-b border-slate-800 pb-3 mb-2">
+                    <h3 class="text-sm font-black uppercase tracking-wider text-white">Mapa de Tiros</h3>
+                </div>
+                <!-- LEYENDA DEL SHOTMAP -->
+                <div id="team-shotmap-legend" class="flex justify-center gap-4 bg-slate-950 p-2.5 rounded-2xl border border-slate-800 text-[10px] font-black uppercase text-slate-300 mt-2">
+                    <div class="flex items-center gap-1.5"><div class="w-3 h-3 rounded-full bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)]"></div> Gol</div>
+                    <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div> Atajado</div>
+                    <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-red-500"></div> Fuera</div>
+                    <div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-slate-500"></div> Bloqueado</div>
+                </div>
+
+                <div class="relative w-full flex justify-center my-auto">
+                    <div class="relative max-w-[380px] w-full">
+                        <canvas id="team-heatmap-canvas" width="{{ pitch_width }}" height="{{ pitch_height }}" class="absolute inset-0 w-full h-full pointer-events-none opacity-0 transition-opacity duration-500" style="z-index: 20;"></canvas>
+                        <div class="pitch !w-full !max-w-none !shadow-none border-white/10" id="team-data-pitch">
+                            <div class="goal-post top"></div>
+                            <div class="goal-post bottom"></div>
+                            <div id="team-layer-shotmap" class="absolute inset-0 w-full h-full opacity-100 transition-opacity duration-300"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ========================================================================== -->
+    <!-- PESTAÑA 2: ESTADÍSTICAS (Diseño de Ranking Idéntico a match.html) -->
+    <!-- ========================================================================== -->
+    <div id="team-tab-content-stats" class="space-y-6 hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+            <!-- RANKING DE JUGADORES DEL PLANTEL (Diseño idéntico a match.html) -->
+            <div class="lg:col-span-7 bg-slate-900/40 p-6 rounded-3xl border border-slate-800 space-y-4">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-l-4 border-orange-500 pl-4 gap-3">
+                    <h2 class="text-xl font-black uppercase italic tracking-tighter text-white">Estadísticas Plantel</h2>
+                </div>
+
+                <!-- BOTONES DE CATEGORÍAS (INCLUYENDO GOLES Y ASISTENCIAS SOLICITADOS) -->
+                <div class="flex flex-col items-center border-b border-red-500/20 pb-2 mb-1 w-full shrink-0">
+                    <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px] bg-slate-800 text-slate-400 font-bold w-full py-1 px-2 rounded-xl">
+                        <button data-type="shots" onclick="updateTeamRanking('shots')" class="px-1.5 py-0.5 rounded bg-sky-500 text-white v-rank-btn whitespace-nowrap">Tiros</button>
+                        <button data-type="headers" onclick="updateTeamRanking('headers')" class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Cabezazos</button>
+                        <button data-type="yellows" onclick="updateTeamRanking('yellows')" class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Tarjetas</button>
+                        <button data-type="fouls" onclick="updateTeamRanking('fouls')" class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Faltas</button>
+                        <button data-type="fouls_rec" onclick="updateTeamRanking('fouls_rec')" class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Faltas Rec.</button>
+                        <button data-type="tackles" onclick="updateTeamRanking('tackles')" class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Entradas</button>
+                        <button data-type="offsides" onclick="updateTeamRanking('offsides')" class="px-1.5 py-0.5 rounded v-rank-btn whitespace-nowrap">Offsides</button>
+                    </div>
+                    <div id="sub-filters" class="sub-menu flex gap-1 justify-center text-[11px] bg-slate-800 text-slate-400 font-bold">
+                        <button onclick="toggleL10()" id="l10-btn" class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700  text-slate-400 hover:text-white transition-all">Ult 10</button>
+                        <button onclick="toggleL5()" id="l5-btn" class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700  text-slate-400 hover:text-white transition-all">Ult 5</button>
+                        
+                        <div id="shot-subfilters" class="flex gap-1">
+                            <button onclick="updateTeamRanking('shots')" data-shot-type="shots" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-black">Todos</button>
+                            <button onclick="updateTeamRanking('shots_on_target')" data-shot-type="shots_on_target" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-black">Arco</button>
+                            <button onclick="updateTeamRanking('shots_outside_box')" data-shot-type="shots_outside_box" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-black">Lejos</button>
+                        </div>
+                        <button onclick="toggleSort()" id="team-sort-btn" class="px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 flex items-center gap-1 border border-slate-700">
+                            <span id="team-sort-label">Total</span>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <path d="m6 9 6 6 6-6" />
+                            </svg>
+                        </button>
+
+                    </div>
+                </div>
+
+                <!-- LISTA Y PAGINACIÓN DE RANKING -->
+                <div id="player-ranking-list" class="space-y-2 min-h-[440px]"></div> 
+                
+                <div class="flex justify-center items-center gap-4 pt-2">
+                    <button onclick="changePage(-1)" class="p-2 rounded-xl bg-slate-950 border border-slate-800 text-sky-400 hover:text-white transition-colors">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+                    <span id="player-page-info" class="text-xs font-black text-slate-400 uppercase">1 / 1</span> 
+                    <button onclick="changePage(1)" class="p-2 rounded-xl bg-slate-950 border border-slate-800 text-sky-400 hover:text-white transition-colors">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- POSICIONES GLOBALES DEL EQUIPO -->
+            <div class="lg:col-span-5 bg-slate-900/40 p-6 rounded-3xl border border-slate-800 space-y-4">
+                <h2 class="text-xl font-black uppercase italic tracking-tighter border-l-4 border-sky-500 pl-4 text-white">Posiciones en Estadísticas</h2>
+                
                 {% macro get_pos_color(v) -%}
                     {% if v == 'N/A' %}text-slate-500
                     {% elif v|int > 20 %}text-red-500
@@ -118,26 +453,27 @@
                     {% else %}text-green-500
                     {% endif %}
                 {%- endmacro %}
-                <div class="bg-slate-800/20 rounded-[2rem] m-auto border border-slate-700/50 overflow-hidden">
+
+                <div class="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden divide-y divide-slate-800/60">
                     {% for pair in global_ranks %}
-                    <div class="grid grid-cols-2 border-b border-slate-700/30 last:border-0 hover:bg-slate-700/10 transition-colors">
-                        <div class="p-4 flex justify-between items-center border-r border-slate-700/30">
+                    <div class="grid grid-cols-2 hover:bg-slate-900/50 transition-colors">
+                        <div class="p-3.5 flex justify-between items-center border-r border-slate-800/60">
                             <div class="flex flex-col">
-                                <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">{{ pair.made.label }}</span>
-                                <div class="flex items-baseline gap-2">
-                                    <span class="text-[16px] font-black {{ get_pos_color(pair.made.pos) }}">#{{ pair.made.pos }}</span>
-                                    <span class="text-[11px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.made.total }}</b></span>
-                                    <span class="text-[11px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.made.pj }}</b></span>
+                                <span class="text-[11px] font-black text-slate-400 uppercase tracking-wider">{{ pair.made.label }}</span>
+                                <div class="flex items-baseline gap-2 mt-1">
+                                    <span class="text-lg font-black {{ get_pos_color(pair.made.pos) }}">#{{ pair.made.pos }}</span>
+                                    <span class="text-[10px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.made.total }}</b></span>
+                                    <span class="text-[10px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.made.pj }}</b></span>
                                 </div>
                             </div>
                         </div>
-                        <div class="p-4 flex justify-between items-center bg-red-500/5">
+                        <div class="p-3.5 flex justify-between items-center bg-red-500/5">
                             <div class="flex flex-col">
-                                <span class="text-[12px] font-black text-slate-500 uppercase tracking-widest">{{ pair.against.label }}</span>
-                                <div class="flex items-baseline gap-2">
-                                    <span class="text-[16px] font-black {{ get_pos_color(pair.against.pos) }}">#{{ pair.against.pos }}</span>
-                                    <span class="text-[11px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.against.total }}</b></span>
-                                    <span class="text-[11px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.against.pj }}</b></span>
+                                <span class="text-[11px] font-black text-slate-400 uppercase tracking-wider">{{ pair.against.label }}</span>
+                                <div class="flex items-baseline gap-2 mt-1">
+                                    <span class="text-lg font-black {{ get_pos_color(pair.against.pos) }}">#{{ pair.against.pos }}</span>
+                                    <span class="text-[10px] text-slate-400 font-bold uppercase">Total: <b class="text-sky-400">{{ pair.against.total }}</b></span>
+                                    <span class="text-[10px] text-slate-400 font-bold uppercase">PJ: <b class="text-sky-400">{{ pair.against.pj }}</b></span>
                                 </div>
                             </div>
                         </div>
@@ -146,171 +482,475 @@
                 </div>
             </div>
 
-            <!-- ESTADISTICAS PLANTEL -->
-            <div class="space-y-3">
-                <div class="flex justify-between items-center border-l-4 border-orange-500 pl-4">
-                    <h2 class="text-xl font-black uppercase italic tracking-tighter">Estadisticas Plantel</h2>
-                    <button onclick="toggleL5()" id="l5-btn" class="text-[9px] px-3 py-1 rounded-full border border-slate-700 font-black uppercase text-slate-500 hover:text-white transition-all">Ultimos 5 Partidos</button>
-                </div>
-                <div class="flex flex-col items-center border-b border-sky-400/20 pb-2 mb-3">
-                    <div class="flex flex-wrap justify-center gap-1 mb-2 text-[12px]">
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-bold rank-btn" id="btn-main">Tiros</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'goals', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Goles</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'assists', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Asistencias</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'headers', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Cabezazos</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'yellows', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Tarjetas</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'fouls_rec', 'all', event)" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold rank-btn">Faltas Rec.</button>
-                    </div>
-                    <div id="sub-filters" class="sub-menu flex gap-1 justify-center mt-2 text-[11px]" style="display:none;">
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'all', event)" id="sub-all" class="px-1.5 py-0.5 rounded bg-sky-500 text-white font-black sub-btn">Todos</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'target', event)" id="sub-target" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black sub-btn">Arco</button>
-                        <button onclick="updateTeamRanking('{{ team_id }}', 'tiradores', 'long', event)" id="sub-long" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-black sub-btn">Lejos</button>
-                    </div>
-                </div>
-
-                <div id="player-ranking-list" class="space-y-1"></div> 
-                <div class="flex justify-center gap-4 mt-2">
-                    <button onclick="changePage(-1)" class="text-sky-400 hover:text-white">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m15 18-6-6 6-6"/></svg>
-                    </button>
-
-                    <span id="player-page-info" class="text-[10px] font-black text-slate-500 uppercase mt-0.5">1 / 1</span> 
-                    
-                    <button onclick="changePage(1)" class="text-sky-400 hover:text-white">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m9 18 6-6-6-6"/></svg>
-                    </button>
-                </div>
-            </div>
         </div>
     </div>
-{% endblock %}
 
-{% block scripts %}
-        <script>
-        function showMatches(type) {
-            const finished = document.getElementById('matches-finished');
-            const upcoming = document.getElementById('matches-upcoming');
-            const btnFinished = document.getElementById('btn-finished');
-            const btnUpcoming = document.getElementById('btn-upcoming');
+</div>
 
-            if (type === 'finished') {
-                finished.classList.remove('hidden');
-                upcoming.classList.add('hidden');
-                btnFinished.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
-                btnFinished.classList.remove('text-slate-500');
-                btnUpcoming.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
-                btnUpcoming.classList.add('text-slate-500');
-            } else {
-                finished.classList.add('hidden');
-                upcoming.classList.remove('hidden');
-                btnUpcoming.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
-                btnUpcoming.classList.remove('text-slate-500');
-                btnFinished.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
-                btnFinished.classList.add('text-slate-500');
+<script>
+    /* ==========================================================================
+       MANEJO DE PESTAÑAS PRINCIPALES DEL EQUIPO (Partidos / Estadísticas)
+       ========================================================================== */
+    function switchTeamTab(tab) {
+        const matchesContent = document.getElementById('team-tab-content-matches');
+        const statsContent = document.getElementById('team-tab-content-stats');
+        const btnMatches = document.getElementById('team-tab-matches');
+        const btnStats = document.getElementById('team-tab-stats');
+
+        if (tab === 'matches') {
+            matchesContent.classList.remove('hidden');
+            statsContent.classList.add('hidden');
+            btnMatches.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+            btnMatches.classList.remove('text-slate-400');
+            btnStats.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+            btnStats.classList.add('text-slate-400');
+        } else {
+            statsContent.classList.remove('hidden');
+            matchesContent.classList.add('hidden');
+            btnStats.classList.add('bg-sky-500', 'text-white', 'shadow-lg');
+            btnStats.classList.remove('text-slate-400');
+            btnMatches.classList.remove('bg-sky-500', 'text-white', 'shadow-lg');
+            btnMatches.classList.add('text-slate-400');
+        }
+    }
+
+    function showTeamMatches(type) {
+        const finished = document.getElementById('team-matches-finished');
+        const upcoming = document.getElementById('team-matches-upcoming');
+        const btnFinished = document.getElementById('btn-team-finished');
+        const btnUpcoming = document.getElementById('btn-team-upcoming');
+
+        if (type === 'finished') {
+            finished.classList.remove('hidden');
+            upcoming.classList.add('hidden');
+            btnFinished.classList.add('bg-sky-500', 'text-white', 'shadow');
+            btnFinished.classList.remove('text-slate-500');
+            btnUpcoming.classList.remove('bg-sky-500', 'text-white', 'shadow');
+            btnUpcoming.classList.add('text-slate-500');
+        } else {
+            finished.classList.add('hidden');
+            upcoming.classList.remove('hidden');
+            btnUpcoming.classList.add('bg-sky-500', 'text-white', 'shadow');
+            btnUpcoming.classList.remove('text-slate-500');
+            btnFinished.classList.remove('bg-sky-500', 'text-white', 'shadow');
+            btnFinished.classList.add('text-slate-500');
+        }
+    }
+
+    /* ==========================================================================
+       CARGA INTERACTIVA DE PARTIDO SELECCIONADO (Alineación + Shotmap/Heatmap)
+       ========================================================================== */
+    let currentLoadedMatchId = null;
+
+    async function loadTeamMatchData(matchId) {
+        if (!matchId) return;
+        currentLoadedMatchId = matchId;
+
+        // Resaltar tarjeta seleccionada en la lista
+        document.querySelectorAll('.team-match-card').forEach(c => {
+            c.classList.remove('border-sky-500', 'bg-sky-500/10');
+            c.classList.add('border-slate-800', 'bg-slate-900/80');
+        });
+        const activeCard = document.getElementById(`team-match-card-${matchId}`);
+        if (activeCard) {
+            activeCard.classList.remove('border-slate-800', 'bg-slate-900/80');
+            activeCard.classList.add('border-sky-500', 'bg-sky-500/10');
+        }
+
+        try {
+            const res = await fetch(`/api/match_detail/${matchId}`);
+            const data = await res.json();
+            if (data.error) return;
+
+            const m = data.match;
+
+            // Actualizar enlace directo al partido
+            const linkEl = document.getElementById('selected-match-link');
+            if (linkEl) linkEl.href = `/match/${matchId}`;
+
+            // Actualizar nombres de equipos en cabecera de la pizarra
+            const homeLabel = document.getElementById('pitch-home-team-label');
+            const awayLabel = document.getElementById('pitch-away-team-label');
+            if (homeLabel) {
+                homeLabel.innerHTML = `<img src="/static/${m.home_team_id}.png" onerror="this.src='/static/none.png'" class="w-5 h-5 object-contain"><span class="text-xs font-black uppercase text-sky-400">${m.home_team}</span>`;
             }
-        }
-
-        let currentType = 'tiradores';
-        let isL5 = false;
-        let teamPlayerData = []; 
-        let playerPage = 1;
-        const playersPerPage = 10; // Cuantos mostrar por pagina
-        const teamId = "{{ team_id }}";
-
-        // 1. Alternar ultimos 5 partidos
-        function toggleL5() {
-            isL5 = !isL5;
-            const btn = document.getElementById('l5-btn');
-            if (isL5) {
-                btn.classList.remove('text-slate-500', 'border-slate-700');
-                btn.classList.add('bg-sky-500', 'text-white', 'border-transparent');
-            } else {
-                btn.classList.add('text-slate-500', 'border-slate-700');
-                btn.classList.remove('bg-sky-500', 'text-white', 'border-transparent');
+            if (awayLabel) {
+                awayLabel.innerHTML = `<span class="text-xs font-black uppercase text-red-400">${m.away_team}</span><img src="/static/${m.away_team_id}.png" onerror="this.src='/static/none.png'" class="w-5 h-5 object-contain">`;
             }
-            updateTeamRanking(teamId, currentType); // Recargar
-        }
 
-        // 2. Funcion unica para dibujar la lista
-        function renderPlayerPage() {
-            const list = document.getElementById('player-ranking-list');
-            const info = document.getElementById('player-page-info');
-            
-            const start = (playerPage - 1) * playersPerPage;
-            const visibleData = teamPlayerData.slice(start, start + playersPerPage);
-            const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
-
-            info.innerText = `${playerPage} / ${totalPages}`;
-            
-            list.innerHTML = visibleData.map(r => `
-                <div class="player-card ${r.is_transferred ? 'border-red-500/50' : ''}" data-pid="${r.player_id}">
-                    <div class="flex justify-between items-center gap-2">
-                        <span class="font-bold truncate text-[14px] ${r.is_transferred ? 'text-red-400' : 'text-slate-200'}">
-                            <span class="text-sky-500 mr-1">#${r.number || '-'} </span>${r.name}<span class="text-slate-500 text-[11px] italic"> (${r.pos})</span>
-                        </span>
-                        <span class="text-[12px] font-bold italic whitespace-nowrap ${r.is_transferred ? 'text-red-400' : 'text-slate-400'} text-right">
-                            <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[14px]">${r.val}</span> ${r.unit} en <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[13px]">${r.pj}</span> PJ | <span class="text-emerald-400">${r.avg}</span> / 90
-                        </span>
-                    </div>
-                </div>`).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-10">Sin datos.</p>';
-        }
-
-        // 3. Cambiar de pagina
-        function changePage(delta) {
-            const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
-            let next = playerPage + delta;
-            if (next >= 1 && next <= totalPages) {
-                playerPage = next;
-                renderPlayerPage();
-            }
-        }
-
-        // 4. Cargar datos desde la API
-        function updateTeamRanking(tId, rankType, shotFilter = 'all', e = null) {
-            currentType = rankType;
-            
-            // Manejo de UI de botones
-            if (e && e.currentTarget) {
-                const isSubBtn = e.currentTarget.classList.contains('sub-btn');
-                const buttons = document.querySelectorAll(isSubBtn ? `#sub-filters button` : `.rank-btn`);
-                buttons.forEach(b => { 
-                    b.classList.remove('bg-sky-500', 'text-white'); 
-                    b.classList.add('bg-slate-800', 'text-slate-500'); // text-slate-400 was used in HTML but JS sets 500
+            // Renderizar Alineación (Fichas en la cancha)
+            const lineupLayer = document.getElementById('team-layer-lineup');
+            if (lineupLayer) {
+                lineupLayer.innerHTML = '';
+                
+                // Local
+                data.home_lineup.forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'player-dot bg-blue-500 shadow-lg';
+                    div.style.bottom = p.role_y + '%';
+                    div.style.left = p.role_x + '%';
+                    div.dataset.pid = p.player_id;
+                    div.innerHTML = `${p.shirt_number || p.position}${p.card ? `<div class="card-badge card-${p.card}"></div>` : ''}<div class="player-name">${p.short_name || p.name}</div>`;
+                    div.onclick = () => openPlayerModal(p.player_id, matchId);
+                    lineupLayer.appendChild(div);
                 });
-                e.currentTarget.classList.remove('bg-slate-800', 'text-slate-500', 'text-slate-400');
-                e.currentTarget.classList.add('bg-sky-500', 'text-white');
+
+                // Visita
+                data.away_lineup.forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'player-dot bg-red-500 shadow-lg';
+                    div.style.top = (100 - p.role_y) + '%';
+                    div.style.left = p.role_x + '%';
+                    div.dataset.pid = p.player_id;
+                    div.innerHTML = `${p.shirt_number || p.position}${p.card ? `<div class="card-badge card-${p.card}"></div>` : ''}<div class="player-name">${p.short_name || p.name}</div>`;
+                    div.onclick = () => openPlayerModal(p.player_id, matchId);
+                    lineupLayer.appendChild(div);
+                });
             }
 
-            const subMenu = document.getElementById(`sub-filters`);
-            if (rankType === 'tiradores') { 
-                subMenu.style.display = 'flex';
-                const subBtns = subMenu.querySelectorAll('button');
-                subBtns.forEach(b => {
-                    const type = b.id.split('-').pop(); // all, target, long
-                    if (type === shotFilter) {
-                        b.classList.remove('bg-slate-800', 'text-slate-500');
-                        b.classList.add('bg-sky-500', 'text-white');
+            // Renderizar Bancos de Suplentes (con Scrollbar azul)
+            const homeSubsEl = document.getElementById('team-home-subs');
+            const awaySubsEl = document.getElementById('team-away-subs');
+            if (homeSubsEl) {
+                homeSubsEl.innerHTML = data.home_subs.map(p => `<div onclick="openPlayerModal('${p.player_id}', '${matchId}')" class="truncate cursor-pointer hover:text-sky-400 font-bold"><span class="text-sky-500 font-black">#${p.shirt_number || '-'}</span> ${p.short_name || p.name}</div>`).join('') || '<span class="text-slate-600 italic">Sin datos</span>';
+            }
+            if (awaySubsEl) {
+                awaySubsEl.innerHTML = data.away_subs.map(p => `<div onclick="openPlayerModal('${p.player_id}', '${matchId}')" class="truncate cursor-pointer hover:text-red-400 font-bold"><span class="text-red-500 font-black">#${p.shirt_number || '-'}</span> ${p.short_name || p.name}</div>`).join('') || '<span class="text-slate-600 italic">Sin datos</span>';
+            }
+
+            // Renderizar Shotmap (Mapa de Tiros)
+            const shotmapLayer = document.getElementById('team-layer-shotmap');
+            if (shotmapLayer) {
+                shotmapLayer.innerHTML = '';
+                {% set OUTCOME_DICT = {"miss" : "Afuera", "block" : "Bloqueado", "save" : "Atajado", "goal" : "Gol", "post" : "Palo"}%}
+                {% set SHOT_TYPE_DICT = {"right-foot" : "Pie derecho", "left-foot" : "Pie izquierdo", "head" : "Cabezazo", "other" : "Otro"}%}
+                let outcome_dict = {{ OUTCOME_DICT|tojson }};
+                let shot_type_dict = {{ SHOT_TYPE_DICT|tojson }};
+
+                if (data.match_shots && data.match_shots.length > 0) {
+                    let h = '<svg class="absolute inset-0 w-full h-full pointer-events-none" style="z-index: 5;">', d = '';
+
+                    data.match_shots.forEach((s, idx) => {
+                        
+                        let px = s.x;
+                        let py = s.y;
+
+                        let cx = s.is_blocked ? s.blocked_x : s.goal_cross_x;
+                        let cy = s.is_blocked ? 100 - s.blocked_y : 100 -s.goal_cross_y;
+
+
+                        let outcome = outcome_dict[s.outcome] || s.outcome || '';
+                        let shot_type = s.shot_type ? (shot_type_dict[s.shot_type] || s.shot_type) : '';
+                        let dotColor = 'bg-red-500', lineColor = 'rgba(239, 68, 68, 0.5)', zIdx = '15', sizeCls = 'w-2 h-2';
+
+                        if (s.outcome === 'goal') {
+                            dotColor = s.own_goal ? 'bg-red-400' : 'bg-yellow-400';
+                            lineColor = s.own_goal ? 'rgba(239, 68, 68, 0.5)' : 'rgba(250, 204, 21, 0.8)';
+                            zIdx = '8';
+                            sizeCls = 'w-4 h-4 shadow-[0_0_10px_rgba(250,204,21,0.5)]';
+                            outcome = s.own_goal ? 'Gol E/C' : 'Gol';
+                        } else if (s.on_target) {
+                            dotColor = 'bg-emerald-500';
+                            lineColor = 'rgba(16, 185, 129, 0.6)';
+                            zIdx = '9';
+                            sizeCls = 'w-2.5 h-2.5';
+                            outcome = 'Atajado';
+                        } else if (s.is_blocked) {
+                            dotColor = 'bg-slate-500';
+                            lineColor = 'rgba(148, 163, 184, 0.5)';
+                            outcome = 'Bloqueado';
+                        }
+
+                        const lineId = `pm-line-${idx}`, blockId = `pm-block-${idx}`;
+                        h += `<line id="${lineId}" class="opacity-0 transition-opacity duration-200" x1="${px}%" y1="${100-py}%" x2="${cx}%" y2="${cy}%" stroke="${lineColor}" stroke-width="2" stroke-dasharray="${(!s.on_target && !s.is_blocked) ? '4 2' : 'none'}" />`;
+
+                        if (s.is_blocked) {
+                            let dx = (cx - px) * {{ pitch_width }};
+                            let dy = (cy - (100 - py)) * {{ pitch_height }};
+                            let long = Math.sqrt(dx * dx + dy * dy);
+                            if (long > 0) {
+                                let lx = - (dy / long) * 6 / {{ pitch_width }} * 100;
+                                let ly = (dx / long) * 6 / {{ pitch_height }} * 100;
+                                h += `<g id="${blockId}" class="opacity-0 transition-opacity duration-200" stroke="${lineColor}" stroke-width="5" stroke-linecap="round">
+                                    <line x1="${cx + lx}%" y1="${cy + ly}%" x2="${cx - lx}%" y2="${cy - ly}%" />
+                                </g>`;
+                            }
+                        }
+
+                        const playerLabel = s.player_name || 'Jugador';
+
+                        d += `<div class="absolute rounded-full ${dotColor} border border-white/80 ${sizeCls} flex items-center justify-center transform -translate-x-1/2 translate-y-1/2 group cursor-pointer hover:scale-150 transition-transform" style="bottom: ${py}%; left: ${px}%; z-index: ${zIdx};" onmouseenter="this.style.zIndex='500'; if(document.getElementById('${lineId}')) document.getElementById('${lineId}').style.opacity='1'; if(document.getElementById('${blockId}')) document.getElementById('${blockId}').style.opacity='1';" onmouseleave="this.style.zIndex='${zIdx}'; if(document.getElementById('${lineId}')) document.getElementById('${lineId}').style.opacity='0'; if(document.getElementById('${blockId}')) document.getElementById('${blockId}').style.opacity='0';">
+                            ${s.outcome === 'goal' ? '<span class="text-[10px] leading-none text-black font-bold select-none">G</span>' : ''}
+                            <div class="absolute left-1/2 -translate-x-1/2 bg-slate-900/95 text-white text-[9px] z-50 font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-slate-700 shadow-2xl ${py > 50 ? 'top-full mb-2' : 'bottom-full mt-2'} flex flex-col items-center">
+                                <div>${s.minute}' - ${playerLabel} <span class="text-slate-400 text-[8px] font-normal">(${outcome})</span></div>
+                                ${shot_type ? `<div class="text-slate-400 text-[8px] font-medium">${shot_type}</div>` : ''}
+                                <div class="absolute left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 border-slate-700 rotate-45 ${py > 50 ? '-top-1 border-t border-l' : '-bottom-1 border-b border-r'}"></div>
+                            </div>
+                        </div>`;
+                    });
+
+                    shotmapLayer.innerHTML = h + '</svg>' + d;
+                }
+            }
+
+        } catch (e) { console.error("Error al cargar datos interactivos del partido:", e); }
+    }
+
+    function selectTeamMatch(matchId, e) {
+        if (e) e.stopPropagation();
+        loadTeamMatchData(matchId);
+    }
+
+    function toggleTeamDataLayer(layer) {
+        const shotmapLayer = document.getElementById('team-layer-shotmap');
+        const heatmapCanvas = document.getElementById('team-heatmap-canvas');
+        const dataPitch = document.getElementById('team-data-pitch');
+        const btnShotmap = document.getElementById('btn-layer-shotmap');
+        const btnHeatmap = document.getElementById('btn-layer-heatmap');
+
+        if (layer === 'heatmap') {
+            if (shotmapLayer) shotmapLayer.style.opacity = '0';
+            if (heatmapCanvas) heatmapCanvas.style.opacity = '1';
+            if (dataPitch) dataPitch.classList.add('pitch-heatmap-dark');
+            btnHeatmap.classList.add('bg-sky-500', 'text-white', 'shadow');
+            btnHeatmap.classList.remove('text-slate-500');
+            btnShotmap.classList.remove('bg-sky-500', 'text-white', 'shadow');
+            btnShotmap.classList.add('text-slate-500');
+        } else {
+            if (shotmapLayer) shotmapLayer.style.opacity = '1';
+            if (heatmapCanvas) heatmapCanvas.style.opacity = '0';
+            if (dataPitch) dataPitch.classList.remove('pitch-heatmap-dark');
+            btnShotmap.classList.add('bg-sky-500', 'text-white', 'shadow');
+            btnShotmap.classList.remove('text-slate-500');
+            btnHeatmap.classList.remove('bg-sky-500', 'text-white', 'shadow');
+            btnHeatmap.classList.add('text-slate-500');
+        }
+    }
+
+    /* ==========================================================================
+       PESTAÑA 2: ESTADÍSTICAS DEL PLANTEL (Diseño idéntico a match.html)
+       ========================================================================== */
+    let currentType = 'tiradores';
+    let currentFilter = 'all';
+    let isL5 = false;
+    let isL10 = false;
+    let sortOrderBy = 'total';
+    let teamPlayerData = []; 
+    let playerPage = 1;
+    const playersPerPage = 10;
+    const teamId = "{{ team_id }}";
+
+    function updateFilterButtonsUI() {
+        const btnL5 = document.getElementById('l5-btn');
+        const btnL10 = document.getElementById('l10-btn');
+        if (btnL5) {
+            if (isL5) {
+                btnL5.classList.remove('text-slate-400', 'bg-slate-900');
+                btnL5.classList.add('bg-sky-500', 'text-white', 'border-transparent');
+            } else {
+                btnL5.classList.add('text-slate-400', 'bg-slate-900');
+                btnL5.classList.remove('bg-sky-500', 'text-white', 'border-transparent');
+            }
+        }
+        if (btnL10) {
+            if (isL10) {
+                btnL10.classList.remove('text-slate-400', 'bg-slate-900');
+                btnL10.classList.add('bg-sky-500', 'text-white', 'border-transparent');
+            } else {
+                btnL10.classList.add('text-slate-400', 'bg-slate-900');
+                btnL10.classList.remove('bg-sky-500', 'text-white', 'border-transparent');
+            }
+        }
+    }
+
+    function toggleL5() {
+        isL5 = !isL5;
+        if (isL5) isL10 = false;
+        updateFilterButtonsUI();
+        updateTeamRanking(currentRankType);
+    }
+
+    function toggleL10() {
+        isL10 = !isL10;
+        if (isL10) isL5 = false;
+        updateFilterButtonsUI();
+        updateTeamRanking(currentRankType);
+    }
+
+    function toggleSort() {
+        sortOrderBy = sortOrderBy === 'total' ? 'avg' : 'total';
+        const label = document.getElementById('team-sort-label');
+        if (label) label.innerText = sortOrderBy === 'total' ? 'Total' : 'Prom.';
+        updateTeamRanking(currentRankType);
+    }
+
+    function highlightPlayerTargetInUI(pid, active) {
+        document.querySelectorAll(`[data-pid="${pid}"]`).forEach(el => {
+            if (el.classList.contains('player-dot')) active ? el.classList.add('highlight-player') : el.classList.remove('highlight-player');
+            else if (el.classList.contains('player-card')) active ? el.classList.add('border-sky-400', 'bg-sky-500/10') : el.classList.remove('border-sky-400', 'bg-sky-500/10');
+        });
+    }
+
+    function renderPlayerPage() {
+        const list = document.getElementById('player-ranking-list');
+        const info = document.getElementById('player-page-info');
+        
+        const start = (playerPage - 1) * playersPerPage;
+        const visibleData = teamPlayerData.slice(start, start + playersPerPage);
+        const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
+
+        info.innerText = `${playerPage} / ${totalPages}`;
+        
+        list.innerHTML = visibleData.map(r => `
+            <div onclick="openPlayerModal('${r.player_id}')" 
+                 onmouseenter="highlightPlayerTargetInUI('${r.player_id}', true)" 
+                 onmouseleave="highlightPlayerTargetInUI('${r.player_id}', false)" 
+                 class="player-card ${r.is_transferred ? 'border-red-500/50' : ''}" 
+                 data-pid="${r.player_id}">
+                <div class="flex justify-between items-center gap-2">
+                    <span class="font-bold truncate text-[13px] ${r.is_transferred ? 'text-red-500' : 'text-slate-100'}">
+                        <span class="${r.is_transferred ? 'text-red-500' : 'text-slate-400'} mr-1">${r.number || '-'} </span>
+                        ${r.name} 
+                        <span class="${r.is_transferred ? 'text-red-500' : 'text-slate-300'} font-bold text-[11px]"> (${r.pos || '-'})</span>
+                    </span>
+                    <span class="text-[12px] font-bold text-right ${r.is_transferred ? 'text-red-500' : 'text-slate-200'}">
+                        <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[14px]">${r.val}</span> ${r.unit} en <span class="${r.is_transferred ? 'text-red-400' : 'text-sky-400'} font-black text-[13px]">${r.pj}</span> PJ | <span class="text-emerald-400">${r.avg}</span> / 90
+                    </span>
+                </div>
+            </div>`).join('') || '<p class="text-[10px] text-slate-600 text-center italic py-10">Sin datos.</p>';
+    }
+
+    function changePage(delta) {
+        const totalPages = Math.ceil(teamPlayerData.length / playersPerPage) || 1;
+        let next = playerPage + delta;
+        if (next >= 1 && next <= totalPages) {
+            playerPage = next;
+            renderPlayerPage();
+        }
+    }
+
+    let currentRankType = 'shots';
+
+    function updateTeamRanking(rankType = currentRankType, shotFilter = 'all', e = null) {
+        if (rankType) currentRankType = rankType; 
+        const isShotRank = ['shots', 'shots_on_target', 'shots_outside_box'].includes(currentRankType);
+        
+        // 1. Destacar botón de categoría principal
+        const mainButtons = document.querySelectorAll('.v-rank-btn, [data-type], .rank-btn');
+        mainButtons.forEach(b => {
+            const bType = b.getAttribute('data-type');
+            const isMatch = (bType === currentRankType);
+            if (isMatch || (isShotRank && (bType === 'shots' || bType === 'tiradores'))) { 
+                b.classList.add('bg-sky-500', 'text-white'); 
+                b.classList.remove('bg-slate-800', 'bg-slate-800', 'text-slate-400'); 
+            } else if (bType) {
+                b.classList.remove('bg-sky-500', 'text-white'); 
+                b.classList.add('bg-slate-800', 'text-slate-400'); 
+            }
+        });
+
+        // 2. Controlar visibilidad y destaque de sub-botones de tiros
+        const subFilterContainer = document.getElementById('shot-subfilters');
+        if (subFilterContainer) {
+            if (isShotRank) {
+                console.log("Mostrando sub-filtros de tiros");
+                subFilterContainer.style.display = 'flex';
+                subFilterContainer.querySelectorAll('[data-shot-type], button').forEach(btn => {
+                    const sType = btn.getAttribute('data-shot-type') || btn.id.replace('sub-', '');
+                    const isSubMatch = (sType === currentRankType || sType === shotFilter);
+                    if (isSubMatch) {
+                        btn.classList.add('bg-sky-500', 'text-white');
+                        btn.classList.remove('bg-slate-800', 'bg-slate-800', 'text-slate-400', 'text-slate-500');
                     } else {
-                        b.classList.add('bg-slate-800', 'text-slate-500');
-                        b.classList.remove('bg-sky-500', 'text-white');
+                        btn.classList.remove('bg-sky-500', 'text-white');
+                        btn.classList.add('bg-slate-800', 'text-slate-400');
                     }
                 });
-            } else { 
-                subMenu.style.display = 'none'; 
+            } else {
+                subFilterContainer.style.display = 'none';
             }
-
-            
-            const limit = isL5 ? 5 : '';
-            fetch(`/api/team_ranking/${tId}?type=${rankType}&filter=${shotFilter}&limit=${limit}`)
-                .then(r => r.json())
-                .then(data => { 
-                    teamPlayerData = data; 
-                    playerPage = 1; 
-                    renderPlayerPage(); 
-                });
         }
 
-        window.onload = () => { updateTeamRanking(teamId, 'tiradores'); };
-    </script>
+        // 3. Determinar los match_ids a incluir según los filtros contextuales activos
+        let activeMatchIds = null; // null significa todos los partidos de la temporada
+        
+        if (typeof matchFocus !== 'undefined' && matchFocus) {
+            const targetMid = typeof currentLoadedMatchId !== 'undefined' ? currentLoadedMatchId : null;
+            activeMatchIds = targetMid ? [targetMid.toString()] : [];
+        } else if (isL5) {
+            const ctxDivs = Array.from(document.querySelectorAll('#l5-context [data-match-id], #team-l5-context [data-match-id]'));
+            activeMatchIds = ctxDivs.length ? ctxDivs.map(el => el.dataset.matchId.toString()) : null;
+        } else if (isL10) {
+            const ctxDivs = Array.from(document.querySelectorAll('#l10-context [data-match-id], #team-l10-context [data-match-id]'));
+            activeMatchIds = ctxDivs.length ? ctxDivs.map(el => el.dataset.matchId.toString()) : null;
+        }
+
+        const RANKING_UNIT_MAP = {
+            'shots': 'tiros', 'tiradores': 'tiros', 'shots_on_target': 'al arco', 'shots_outside_box': 'de lejos',
+            'headers': 'cabezazos', 'yellows': 'tarjetas', 'cards': 'tarjetas', 'fouls': 'faltas',
+            'fouls_rec': 'faltas rec.', 'tackles': 'entradas', 'offsides': 'offsides', 'goals': 'goles', 'assists': 'asistencias'
+        };
+        const currentUnit = RANKING_UNIT_MAP[currentRankType] || 'tiros';
+
+        // 4. Procesar la matriz en memoria si existe para el equipo actual o consultar la API
+        const rawPlayers = (typeof rawTeamPlayers !== 'undefined' && Object.keys(rawTeamPlayers).length > 0) ? rawTeamPlayers : null;
+
+        if (rawPlayers) {
+            const rankings = [];
+            Object.values(rawPlayers).forEach(p => {
+                let totalVal = 0, totalMins = 0, totalPj = 0;
+                const history = {};
+                const playerMatches = p.matches || {};
+                Object.keys(playerMatches).forEach(mId => {
+                    if (activeMatchIds !== null && !activeMatchIds.includes(mId.toString())) return;
+                    const mData = playerMatches[mId];
+                    const val = mData[currentRankType] || 0;
+                    const mins = mData.mins || 0;
+                    const isSub = mData.is_sub || false;
+
+                    totalVal += val;
+                    totalMins += mins;
+                    if (mins > 0) totalPj += 1;
+                    history[mId] = { val: val, mins: mins, is_sub: isSub };
+                });
+
+                const avg = totalMins > 0 ? parseFloat(((totalVal / totalMins) * 90).toFixed(2)) : 0.0;
+                rankings.push({
+                    player_id: p.player_id, name: p.name, pos: p.pos, number: p.number,
+                    val: totalVal, pj: totalPj, minutes: totalMins, avg: avg,
+                    unit: currentUnit, is_transferred: p.is_transferred, unavail_reason: p.unavail_reason, history: history
+                });
+            });
+
+            if (sortOrderBy === 'avg') {
+                rankings.sort((a, b) => b.avg - a.avg || b.val - a.val);
+            } else {
+                rankings.sort((a, b) => b.val - a.val || b.avg - a.avg);
+            }
+
+            teamPlayerData = rankings;
+            playerPage = 1;
+            renderPlayerPage();
+        } else {
+            const limit = isL5 ? 5 : (isL10 ? 10 : '');
+            fetch(`/api/team_ranking/${teamId}?type=${currentRankType}&filter=${shotFilter}&limit=${limit}&order_by=${sortOrderBy}`)
+                .then(r => r.json())
+                .then(data => {
+                    teamPlayerData = data;
+                    playerPage = 1;
+                    renderPlayerPage();
+                });
+        }
+    }
+
+    // Inicializar primer partido y rankings al cargar
+    window.onload = () => { 
+        updateTeamRanking('shots'); 
+        {% if matches_finished and matches_finished|length > 0 %}
+        loadTeamMatchData("{{ matches_finished[0].id }}");
+        {% elif matches_upcoming and matches_upcoming|length > 0 %}
+        loadTeamMatchData("{{ matches_upcoming[0].id }}");
+        {% endif %}
+    };
+</script>
 {% endblock %}

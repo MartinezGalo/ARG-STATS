@@ -1,0 +1,576 @@
+<!-- PLAYER MODAL COMPONENT (Reutilizable en match.html, team.html, etc.) -->
+<style>
+    #modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(8px);
+        z-index: 3000;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #player-modal {
+        background: #111827;
+        width: 95%;
+        max-width: 1100px;
+        height: 750px !important;
+        border-radius: 2.5rem;
+        border: 1px solid #334155;
+        padding: 2rem 1rem 1.5rem 1.5rem;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+    }
+
+    .modal-body-grid {
+        display: grid !important;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 2.5rem;
+        flex: 1 !important;
+        min-height: 0 !important;
+        overflow: hidden;
+    }
+
+    #modal-content {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .notes-section {
+        height: 160px;
+        flex-shrink: 0;
+    }
+
+    /* Estilos de cancha horizontal y áreas */
+    .pitch-h {
+        position: relative;
+    }
+
+    .pitch-h::before,
+    .pitch-h::after {
+        content: "";
+        position: absolute;
+        top: 20%;
+        height: 60%;
+        width: 15%;
+        border: 2px solid var(--line-soft, rgba(255, 255, 255, 0.2));
+        background-color: var(--pitch-green, #1a4d2e);
+        z-index: 1;
+    }
+
+    .pitch-h::before {
+        left: 0;
+        border-left: 0;
+    }
+
+    .pitch-h::after {
+        right: 0;
+        border-right: 0;
+    }
+
+    .goal-post {
+        position: absolute;
+        z-index: 10;
+        background: white;
+        box-shadow: 0 0 10px white;
+    }
+
+    .goal-post.left {
+        left: -2px;
+        right: auto;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 15%;
+        border-radius: 0 4px 4px 0;
+    }
+
+    .goal-post.right {
+        left: auto;
+        right: -2px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 15%;
+        border-radius: 4px 0 0 4px;
+    }
+</style>
+
+<div id="modal-overlay" onclick="if(event.target==this) closeModal()">
+    <div id="player-modal">
+        <div id="modal-content"></div>
+    </div>
+</div>
+
+<script>
+    let selectedPlayerStatKey = null;
+
+    async function openPlayer(pid, matchId = null) {
+        const overlay = document.getElementById('modal-overlay'), content = document.getElementById('modal-content');
+        if (!overlay || !content) return;
+        
+        overlay.style.display = 'flex';
+        overlay.classList.remove('hidden');
+        content.innerHTML = '<div class="text-center p-20 animate-pulse font-black text-sky-500">CARGANDO PERFIL DE JUGADOR...</div>';
+        
+        const mId = matchId || (typeof currentLoadedMatchId !== 'undefined' ? currentLoadedMatchId : null);
+        const fetchUrl = mId ? `/player_info/${pid}/${mId}` : `/player_info/${pid}`;
+        const r = await fetch(fetchUrl);
+        if (!r.ok) { 
+            content.innerHTML = '<div class="p-20 text-center text-slate-500 font-bold">INFORMACIÓN NO DISPONIBLE</div>'; 
+            return; 
+        }
+        const d = await r.json();
+        if (d.error) {
+            content.innerHTML = '<div class="p-20 text-center text-slate-500 font-bold">INFORMACIÓN NO DISPONIBLE</div>';
+            return;
+        }
+
+        window.currentRankings = d.rankings_top;
+        window.currentPlayerData = d.stats;
+        window.playerL5Details = d.last_5_details;
+        window.playerL10Details = d.last_10_details;
+        window.playerTeamId = d.team_id;
+        window.playerShots = d.shots || [];
+        window.activePlayerTeams = d.teams_history ? [...d.teams_history] : [];
+        window.currentPid = pid;
+        window.currentMatchContext = {
+            match_id: d.match_id,
+            home_team_id: d.home_team_id,
+            away_team_id: d.away_team_id,
+            home_team: d.home_team,
+            away_team: d.away_team,
+            score: d.score || ''
+        };
+        
+        let teamSelectorHtml = '';
+        if (d.teams_history && d.teams_history.length > 0) {
+            teamSelectorHtml = `<div class="flex items-center gap-2 mb-3 bg-slate-900/30 p-2 rounded-2xl border border-slate-800 shrink-0">
+                <span class="text-[10px] font-black text-slate-500 uppercase ml-2">Contexto:</span>
+                <div class="flex gap-1 overflow-x-auto no-scrollbar">
+                    ${d.teams_history.map(tid => `<img id="team-sel-${tid}" onclick="toggleTeam('${tid}', '${pid}', '${d.match_id}')" src="/static/${tid}_xsmall.png" onerror="this.src='/static/none.png'" class="w-8 h-8 object-contain cursor-pointer rounded-lg border-2 ${window.activePlayerTeams.includes(tid) ? 'border-sky-500 shadow-[0_0_5px_rgba(14,165,233,0.5)]' : 'border-slate-700 opacity-30 grayscale'} hover:scale-110 transition-all">`).join('')}
+                </div>
+            </div>`;
+        }
+
+        content.innerHTML = `
+            <div class="flex justify-between items-end pb-2 mb-3 shrink-0">
+                <h2 class="text-3xl md:text-5xl font-black text-white italic uppercase">#${d.number || 'S/N'} ${d.name}</h2>
+                <button onclick="closeModal()" class="text-slate-500 hover:text-white text-2xl px-2">✕</button>
+            </div>
+            
+            <div class="flex gap-2 mb-3 bg-slate-900/50 p-1.5 rounded-2xl border border-slate-800 shrink-0">
+                <button onclick="switchPlayerMainTab('stats')" id="main-tab-btn-stats" class="flex-1 py-2 text-xs font-black uppercase rounded-xl transition-all bg-sky-600 text-white">Estadisticas</button>
+                <button onclick="switchPlayerMainTab('shotmap')" id="main-tab-btn-shotmap" class="flex-1 py-2 text-xs font-black uppercase rounded-xl transition-all text-slate-400">Mapa de Tiros</button>
+                <button onclick="switchPlayerMainTab('rankings')" id="main-tab-btn-rankings" class="flex-1 py-2 text-xs font-black uppercase rounded-xl transition-all text-slate-400">Rankings</button>
+            </div>
+
+            ${teamSelectorHtml}
+
+            <div class="flex-1 min-h-0 relative overflow-hidden">
+                <!-- Tab 1: Stats -->
+                <div id="pmodal-tab-stats" class="absolute inset-0 flex flex-col md:flex-row gap-4 overflow-hidden">
+                    <div class="w-full md:w-1/2 bg-slate-900/50 rounded-[2rem] border border-slate-800 p-4 flex flex-col min-h-0">
+                        <div class="flex gap-1 mb-3 bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
+                            <button onclick="switchPlayerTab('gen')" id="tab-btn-gen" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg bg-sky-600 text-white">General</button>
+                            <button onclick="switchPlayerTab('l10')" id="tab-btn-l10" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg text-slate-500">Ult 10</button>
+                            <button onclick="switchPlayerTab('l5')" id="tab-btn-l5" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg text-slate-500">Ult 5</button>
+                            <button onclick="switchPlayerTab('part')" id="tab-btn-part" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg text-slate-500">Partido</button>
+                        </div>
+                        <div id="player-stats-content" class="space-y-1 overflow-y-auto flex-1 custom-blue-scroll no-scrollbar pr-1">${renderStatRows(d.stats.general)}</div>
+                        <div id="player-modal-rival-context" class="hidden justify-center items-center gap-3 mt-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex-wrap min-h-[4rem]"></div>
+                    </div>
+                    <div class="w-full md:w-1/2 flex flex-col min-h-0">
+                        <div class="notes-section bg-slate-900/50 rounded-[2rem] border border-slate-800 p-4 shadow-inner flex-1 flex flex-col min-h-0">
+                            <div class="flex justify-between items-center mb-2 px-1 shrink-0">
+                                <h4 class="text-[11px] font-black text-sky-500 uppercase tracking-[0.2em]">Notas de Scouting</h4>
+                                <button onclick="savePlayerNote('${pid}')" class="text-[9px] bg-sky-600 hover:bg-sky-500 text-white px-3 py-1 rounded-lg font-black uppercase transition-all shadow-lg">Guardar</button>
+                            </div>
+                            <textarea id="p-note-area" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-base text-slate-300 outline-none focus:border-sky-500 transition-all flex-1 resize-none shadow-inner">${d.notes || ''}</textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Shot Map -->
+                <div id="pmodal-tab-shotmap" class="absolute inset-0 hidden flex-col min-h-0 bg-slate-900/50 rounded-[2rem] border border-slate-800 p-4 shadow-inner">
+                    <div class="flex justify-center items-center mb-3 shrink-0 gap-3">
+                        <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                            <button onclick="filterShotMap('all')" id="sm-btn-all" class="px-4 py-1.5 text-[10px] font-black uppercase rounded-lg bg-sky-600 text-white transition-all">Temp.</button>
+                            <button onclick="filterShotMap('l10')" id="sm-btn-l10" class="px-4 py-1.5 text-[10px] font-black uppercase rounded-lg text-slate-500 hover:text-white transition-all">Ult 10</button>
+                            <button onclick="filterShotMap('l5')" id="sm-btn-l5" class="px-4 py-1.5 text-[10px] font-black uppercase rounded-lg text-slate-500 hover:text-white transition-all">Ult 5</button>
+                        </div>
+                        <div class="flex items-center gap-4 text-[10px] uppercase font-black text-slate-400 tracking-widest">
+                            <span class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-yellow-400"></div>Gol</span>
+                            <span class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-emerald-500"></div>Arco</span>
+                            <span class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-red-500"></div>Fuera</span>
+                        </div>
+                    </div>
+                    <!-- PITCH HORIZONTAL -->
+                    <div class="pitch-h flex-1 relative bg-[#1a4d2e] border border-white/20 mx-auto aspect-[604/422] w-[604px] my-auto" style="background-image: linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0.8)), linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0.8)), radial-gradient(circle at 50% 50%, transparent 14%, rgba(255,255,255,0.2) 14.5%, rgba(255,255,255,0.2) 15.5%, transparent 16%), linear-gradient(to right, transparent 49.5%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 50.5%, transparent 51%); background-size: 2px 25%, 2px 25%, 100% 100%, 100% 100%; background-position: left center, right center, center, center; background-repeat: no-repeat;">
+                        <div class="goal-post left"></div>
+                        <div class="goal-post right"></div>
+                        <div id="player-shotmap-container" class="absolute inset-0 w-full h-full pointer-events-auto">
+                            ${renderPlayerShots(d.shots, 'all')}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Rankings -->
+                <div id="pmodal-tab-rankings" class="absolute inset-0 hidden flex-col min-h-0 bg-slate-900/50 rounded-[2rem] border border-slate-800 p-4 shadow-inner">
+                    <div class="flex justify-between items-center mb-4 shrink-0">
+                        <h4 class="text-xs font-black text-sky-500 uppercase tracking-[0.2em]">Rankings (Top 20)</h4>
+                        <div class="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+                            <button onclick="renderRankScope('liga')" id="rank-scope-liga" class="px-3 py-1 text-[10px] font-black uppercase rounded-md bg-sky-600 text-white transition-all">Liga</button>
+                            <button onclick="renderRankScope('equipo')" id="rank-scope-equipo" class="px-3 py-1 text-[10px] font-black uppercase rounded-md text-slate-500">Equipo</button>
+                            <button onclick="renderRankScope('posicion')" id="rank-scope-posicion" class="px-3 py-1 text-[10px] font-black uppercase rounded-md text-slate-500">Posición</button>
+                        </div>
+                    </div>
+                    <div id="rankings-list-container" class="grid grid-cols-2 gap-3 overflow-y-auto flex-1 custom-blue-scroll pr-1"></div>
+                </div>
+            </div>`;
+        
+        renderRankScope('liga');
+    }
+
+    // Alias para garantizar compatibilidad total
+    window.openPlayerModal = function(pid, matchId = null) {
+        return openPlayer(pid, matchId);
+    };
+
+    function closeModal() { 
+        const overlay = document.getElementById('modal-overlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+            overlay.classList.add('hidden');
+        }
+    }
+
+    function closePlayerModal() {
+        closeModal();
+    }
+
+    function switchPlayerMainTab(tab) {
+        ['stats', 'shotmap', 'rankings'].forEach(t => { 
+            const btn = document.getElementById(`main-tab-btn-${t}`), content = document.getElementById(`pmodal-tab-${t}`); 
+            if (btn && content) { 
+                if (t === tab) { 
+                    btn.classList.add('bg-sky-600', 'text-white'); 
+                    btn.classList.remove('text-slate-400'); 
+                    content.classList.remove('hidden'); 
+                    if (t === 'stats') content.classList.add('flex'); 
+                } else { 
+                    btn.classList.remove('bg-sky-600', 'text-white'); 
+                    btn.classList.add('text-slate-400'); 
+                    content.classList.add('hidden'); 
+                    content.classList.remove('flex'); 
+                } 
+            }
+        });
+    }
+
+    async function toggleTeam(tid, pid, matchId) {
+        const img = document.getElementById(`team-sel-${tid}`);
+        if (window.activePlayerTeams.includes(tid)) {
+            if (window.activePlayerTeams.length > 1) {
+                window.activePlayerTeams = window.activePlayerTeams.filter(x => x !== tid);
+                if (img) {
+                    img.classList.add('opacity-30', 'grayscale');
+                    img.classList.remove('border-sky-500', 'shadow-[0_0_5px_rgba(14,165,233,0.5)]');
+                    img.classList.add('border-slate-700');
+                }
+            }
+        } else {
+            window.activePlayerTeams.push(tid);
+            if (img) {
+                img.classList.remove('opacity-30', 'grayscale', 'border-slate-700');
+                img.classList.add('border-sky-500', 'shadow-[0_0_5px_rgba(14,165,233,0.5)]');
+            }
+        }
+        await updatePlayerModalData(pid, matchId);
+    }
+
+    function filterShotMap(filter) {
+        ['all', 'l10', 'l5'].forEach(f => {
+            const btn = document.getElementById(`sm-btn-${f}`);
+            if (btn) {
+                if (f === filter) {
+                    btn.classList.add('bg-sky-600', 'text-white');
+                    btn.classList.remove('text-slate-500', 'hover:text-white');
+                } else {
+                    btn.classList.remove('bg-sky-600', 'text-white');
+                    btn.classList.add('text-slate-500', 'hover:text-white');
+                }
+            }
+        });
+        const container = document.getElementById('player-shotmap-container');
+        if (container) {
+            container.innerHTML = renderPlayerShots(window.playerShots, filter);
+        }
+    }
+
+    function savePlayerNote(pid) {
+        const notes = document.getElementById('p-note-area').value;
+        const formData = new FormData();
+        formData.append('notes', notes);
+
+        fetch(`/save_player_note/${pid}`, {
+            method: 'POST',
+            body: formData
+        }).then(r => {
+            if (r.ok) {
+                const btn = document.querySelector(`button[onclick="savePlayerNote('${pid}')"]`);
+                if (btn) {
+                    btn.innerText = "Guardado!";
+                    btn.classList.remove('bg-sky-600', 'hover:bg-sky-500');
+                    btn.classList.add('bg-emerald-500', 'hover:bg-emerald-400');
+                    setTimeout(() => {
+                        btn.innerText = "Guardar";
+                        btn.classList.add('bg-sky-600', 'hover:bg-sky-500');
+                        btn.classList.remove('bg-emerald-500', 'hover:bg-emerald-400');
+                    }, 2000);
+                }
+            }
+        });
+    }
+
+    async function updatePlayerModalData(pid, matchId) {
+        const teamsQuery = window.activePlayerTeams?.length ? `?teams=${window.activePlayerTeams.join(',')}` : '';
+        const mId = matchId || (typeof currentLoadedMatchId !== 'undefined' ? currentLoadedMatchId : null);
+        const fetchUrl = mId ? `/player_info/${pid}/${mId}${teamsQuery}` : `/player_info/${pid}${teamsQuery}`;
+        const r = await fetch(fetchUrl); 
+        if (!r.ok) return;
+        const d = await r.json(); 
+        window.currentRankings = d.rankings_top; 
+        window.currentPlayerData = d.stats; 
+        window.playerL5Details = d.last_5_details; 
+        window.playerL10Details = d.last_10_details; 
+        window.playerTeamId = d.team_id; 
+        window.playerShots = d.shots || [];
+        const activeTab = document.querySelector('#pmodal-tab-stats .bg-sky-600'); 
+        if(activeTab) switchPlayerTab(activeTab.id.replace('tab-btn-', ''));
+    }
+
+    function renderPlayerShots(shots, filter = 'all') {
+        if (!shots?.length) return '';
+        let filtered = shots; 
+        if (filter !== 'all') { 
+            const uniqueM = [...new Set(shots.map(s => s.match_id))], allowed = uniqueM.slice(0, filter === 'l5' ? 5 : 10); 
+            filtered = shots.filter(s => allowed.includes(s.match_id)); 
+        }
+        let h = '<svg class="absolute inset-0 w-full h-full pointer-events-none" style="z-index: 5;">';
+        let d = '';
+        const outcome_dict = {"miss": "Afuera", "block": "Bloqueado", "save": "Atajado", "goal": "Gol", "post": "Palo"};
+        const shot_type_dict = {"right-foot": "Pie derecho", "left-foot": "Pie izquierdo", "head": "Cabezazo", "other": "Otro"};
+            
+        filtered.forEach((s, idx) => {
+            let px, py, cx, cy;
+            if (s.is_home){
+                px = s.y; py = s.x;
+                cx = s.cy; cy = s.cx;
+            } else {
+                px = 100 - s.y; py = 100 - s.x;
+                cx = 100 - s.cy; cy = 100 - s.cx;
+            }
+
+            let outcome = outcome_dict[s.outcome] || s.outcome;  
+            let shot_type = s.shot_type ? (shot_type_dict[s.shot_type] || s.shot_type) : '';      
+            let dotColor = 'bg-red-500', lineColor = 'rgba(239, 68, 68, 0.5)', zIdx = '15', sizeCls = 'w-2 h-2';
+
+            if (s.outcome === 'goal') { 
+                dotColor = s.own_goal ? 'bg-red-400' : 'bg-yellow-400'; 
+                lineColor = s.own_goal ? 'rgba(239, 68, 68, 0.5)' : 'rgba(250, 204, 21, 0.8)'; 
+                zIdx = '8'; 
+                sizeCls = 'w-4 h-4 shadow-[0_0_10px_rgba(250,204,21,0.5)]'; 
+                outcome = s.own_goal ? 'Gol E/C' : 'Gol'; 
+            } else if (s.on_target) { 
+                dotColor = 'bg-emerald-500'; 
+                lineColor = 'rgba(16, 185, 129, 0.6)'; 
+                zIdx = '9'; 
+                sizeCls = 'w-2.5 h-2.5'; 
+                outcome = 'Atajado'; 
+            } else if (s.is_blocked) { 
+                dotColor = 'bg-slate-500'; 
+                lineColor = 'rgba(148, 163, 184, 0.5)'; 
+            }
+
+            const pidStr = window.currentPid || 'player';
+            const lineId = `pm-line-${pidStr}-${idx}`, blockId = `pm-block-${pidStr}-${idx}`;
+            h += `<line id="${lineId}" class="opacity-0 transition-opacity duration-200" x1="${px}%" y1="${py}%" x2="${cx}%" y2="${cy}%" stroke="${lineColor}" stroke-width="2" stroke-dasharray="${(!s.on_target && !s.is_blocked) ? '4 2' : 'none'}" />`;
+            if (s.is_blocked) {
+                let dx = (cx - px) * 604;
+                let dy = (cy - py) * 422;
+                let long = Math.sqrt(dx * dx + dy * dy);
+                let lx = - (dy / (long || 1)) * 6 / 604 * 100;
+                let ly = dx / (long || 1) * 6 / 422 * 100;
+                h += `<g id="${blockId}" class="opacity-0 transition-opacity duration-200" stroke="${lineColor}" stroke-width="5" stroke-linecap="round">
+                    <line x1="${cx + lx}%" y1="${cy + ly}%" x2="${cx - lx}%" y2="${cy - ly}%" />
+                </g>`;
+            }
+
+            d += `<div class="absolute rounded-full ${dotColor} border border-white/80 ${sizeCls} flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 group cursor-pointer hover:scale-150 transition-transform" style="top: ${py}%; left: ${px}%; z-index: ${zIdx};" onmouseenter="this.style.zIndex='500'; const l=document.getElementById('${lineId}'); if(l) l.style.opacity='1'; ${s.is_blocked ? `const b=document.getElementById('${blockId}'); if(b) b.style.opacity='1';` : ''}" onmouseleave="this.style.zIndex='${zIdx}'; const l=document.getElementById('${lineId}'); if(l) l.style.opacity='0'; ${s.is_blocked ? `const b=document.getElementById('${blockId}'); if(b) b.style.opacity='0';` : ''}">
+                ${s.outcome === 'goal' ? '<span class="text-[10px] leading-none color-black text-black font-bold select-none">G</span>' : ''}
+                <div class="absolute left-1/2 -translate-x-1/2 bg-slate-900/95 text-white text-[9px] z-50 font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-slate-700 shadow-2xl ${py > 50 ? 'top-5' : 'bottom-5'} flex flex-col items-center">
+                    <div>${s.minute}' VS ${s.rival} <span class="text-slate-400 text-[8px] font-normal">(${outcome})</span></div>
+                    <div class="text-slate-400 text-[8px] font-medium">${shot_type}</div>
+                    <div class="absolute left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 border-slate-700 rotate-45 ${py > 50 ? '-top-1 border-t border-l' : '-bottom-1 border-b border-r'}"></div>
+                </div>
+            </div>`;
+        });
+        return h + '</svg>' + d;
+    }
+
+    function renderRankScope(scope) {
+        const c = document.getElementById('rankings-list-container');
+        if (!c || !window.currentRankings) return;
+        const data = window.currentRankings[scope];
+        ['liga', 'equipo', 'posicion'].forEach(s => { 
+            const b = document.getElementById(`rank-scope-${s}`); 
+            if (b) b.className = (s === scope) ? "px-3 py-1 text-[10px] font-black uppercase rounded-md bg-sky-600 text-white shadow-lg" : "px-3 py-1 text-[10px] font-black uppercase rounded-md text-slate-500"; 
+        });
+        if (!data?.length) { 
+            c.innerHTML = '<div class="col-span-2 text-center py-10 text-slate-600 italic text-xs">Sin registros.</div>'; 
+            return; 
+        }
+        c.innerHTML = data.map(r => `<div class="rank-badge h-16 shrink-0 p-2 rounded-xl border border-slate-800 bg-slate-900/80"><div class="flex flex-col justify-center"><span class="text-[11px] text-slate-300 font-black uppercase">${r.label}</span><span class="text-white font-bold text-sm">${r.total} <small class="text-slate-600 italic">acum.</small></span></div><div class="text-right"><span class="text-3xl font-black ${r.pos <= 3 ? 'text-emerald-400' : 'text-sky-500'}">#${r.pos}</span></div></div>`).join('');
+    }
+
+    function renderStatRows(data, isPartidoTab = false) {
+        if (!data) return '';
+        let labels = [
+            ['Tiros Totales', 'shots'],
+            ['Al Arco', 'target'],
+            ['De Lejos', 'long'],
+            ['Cabezazos', 'headers'],
+            ['Entradas', 'tackles'],
+            ['Offsides', 'offsides'],
+            ['Tarjetas', 'cards'],
+            ['Faltas Cometidas', 'f_c'],
+            ['Faltas Recibidas', 'f_r'],
+            ['Minutos', 'mins'],
+            ['Partidos', 'pj']
+        ];
+        if (isPartidoTab) {
+            labels = labels.filter(l => l[1] !== 'pj' && l[1] !== 'partido');
+        }
+        return labels.map(l => {
+            const isSelected = selectedPlayerStatKey === l[1];
+            const activeBg = isSelected ? 'bg-sky-600/30 border border-sky-500/50 shadow-md' : 'hover:bg-slate-800/50';
+            const labelColor = isSelected ? 'text-sky-400' : 'text-slate-400';
+            return `<div class="flex justify-between items-center px-2 py-1 rounded-md transition-all cursor-pointer group ${activeBg}" onclick="selectPlayerStat('${l[1]}')" onmouseenter="handleStatHover('${l[1]}')" onmouseleave="handleStatLeave()"><span class="text-[11px] font-bold ${labelColor} uppercase group-hover:text-sky-400">${l[0]}</span><span class="text-sm font-black text-white">${data[l[1]] || 0}</span></div>`;
+        }).join('');
+    }
+
+    function selectPlayerStat(key) {
+        if (selectedPlayerStatKey === key) {
+            selectedPlayerStatKey = null;
+        } else {
+            selectedPlayerStatKey = key;
+        }
+        const active = document.querySelector('#pmodal-tab-stats .bg-sky-600');
+        const tab = active ? active.id.replace('tab-btn-', '') : 'gen';
+        const map = { 'gen': 'general', 'l5': 'l5', 'l10': 'l10', 'part': 'partido' };
+        const c = document.getElementById('player-stats-content');
+        if (c && window.currentPlayerData) {
+            c.innerHTML = renderStatRows(window.currentPlayerData[map[tab]], tab === 'part');
+        }
+        updatePlayerModalContext(selectedPlayerStatKey);
+    }
+
+    function handleStatHover(key) {
+        const active = document.querySelector('#pmodal-tab-stats .bg-sky-600');
+        if (!active) return; 
+        const tab = active.id.replace('tab-btn-', ''); 
+        if (tab === 'gen') return;
+        updatePlayerModalContext(key);
+    }
+
+    function handleStatLeave() { 
+        const active = document.querySelector('#pmodal-tab-stats .bg-sky-600'); 
+        if (!active) return;
+        const tab = active.id.replace('tab-btn-', '');
+        if (tab === 'gen') return;
+        updatePlayerModalContext(selectedPlayerStatKey);
+    }
+
+    function updatePlayerModalContext(statKey) {
+        const c = document.getElementById('player-modal-rival-context');
+        const active = document.querySelector('#pmodal-tab-stats .bg-sky-600');
+        if (!active || !c) return;
+        const tab = active.id.replace('tab-btn-', '');
+        if (tab === 'gen') {
+            c.classList.add('hidden');
+            c.classList.remove('flex');
+            return;
+        }
+
+        let details = tab === 'l10' ? window.playerL10Details : tab === 'l5' ? window.playerL5Details : null;
+        if (tab === 'part' && window.currentMatchContext) {
+            const ctx = window.currentMatchContext;
+            const isHome = String(window.playerTeamId) === String(ctx.home_team_id);
+            details = [{
+                match_id: ctx.match_id,
+                rival_id: isHome ? ctx.away_team_id : ctx.home_team_id,
+                rival: isHome ? ctx.away_team : ctx.home_team,
+                cond: isHome ? 'L' : 'V',
+                score: ctx.score || '-',
+                result: 'D',
+                minutes: window.currentPlayerData['partido']?.mins || 0,
+                is_sub: false,
+                match_stats: window.currentPlayerData['partido']
+            }];
+        }
+
+        if (!details || !details.length) {
+            c.classList.add('hidden');
+            c.classList.remove('flex');
+            return;
+        }
+
+        c.classList.remove('hidden');
+        c.classList.add('flex');
+
+        c.innerHTML = details.map(m => {
+            const val = (statKey && m.match_stats) ? (m.match_stats[statKey] ?? 0) : null;
+            const mins = m.minutes || (m.match_stats ? m.match_stats.mins : 0) || 0;
+            const isSub = m.is_sub || false;
+            const scoreStr = m.score || '-';
+            const resClass = m.result === 'W' ? 'text-emerald-500' : (m.result === 'L' ? 'text-red-500' : 'text-slate-400');
+            const condClass = m.cond === 'L' ? 'text-green-500' : 'text-yellow-500';
+            const statClass = val !== null ? (val > 0 ? 'text-sky-400' : 'text-white/50') : 'text-transparent';
+
+            return `<div class="flex flex-col items-center min-w-[32px]" data-match-id="${m.match_id}">
+                <span class="text-[9px] font-black ${condClass}">${m.cond}</span>
+                <a href="/match/${m.match_id}"><img src="/static/${m.rival_id || 'none'}_xsmall.png" onerror="this.src='/static/none.png'" class="w-6 h-6 object-contain hover:scale-110 transition-transform"></a>
+                <span class="text-[10px] font-black ${resClass}">${scoreStr}</span>
+                <span class="dynamic-stat text-[11px] font-bold ${statClass} h-4 min-h-[1rem] flex items-center justify-center">${val !== null ? val : '-'}</span>
+                <span class="dynamic-substat text-[10px] font-black text-slate-300 h-3 min-h-[0.75rem] flex items-center justify-center">${mins > 0 ? (isSub ? '<span class="text-emerald-400 font-black mr-0.5">⬆</span>' : '') + mins + "'" : ''}</span>
+            </div>`;
+        }).join('');
+    }
+
+    function switchPlayerTab(tab) {
+        selectedPlayerStatKey = null;
+        const c = document.getElementById('player-stats-content'), rc = document.getElementById('player-modal-rival-context'), map = { 'gen': 'general', 'l5': 'l5', 'l10': 'l10', 'part': 'partido' };
+        if (!c || !window.currentPlayerData) return;
+        c.innerHTML = renderStatRows(window.currentPlayerData[map[tab]], tab === 'part');
+        if (tab !== 'gen') updatePlayerModalContext(null);
+        else if (rc) { rc.classList.add('hidden'); rc.classList.remove('flex'); }
+
+        ['gen', 'l5', 'l10', 'part'].forEach(t => { 
+            const b = document.getElementById(`tab-btn-${t}`); 
+            if (b) { 
+                if (t === tab) {
+                    b.classList.add('bg-sky-600', 'text-white'); 
+                    b.classList.remove('text-slate-500'); 
+                } else {
+                    b.classList.remove('bg-sky-600', 'text-white'); 
+                    b.classList.add('text-slate-500'); 
+                }
+            }
+        });
+    }
+</script>

@@ -47,7 +47,7 @@
                             </div>
                             <div class="grid grid-cols-3 items-center gap-2 mb-3 text-[14px]">
                                 <div class="flex flex-col items-center gap-1 overflow-hidden">
-                                    <img src="{{ url_for('static', filename=m.id_home_team ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-8 h-8 object-contain">
+                                    <img src="{{ url_for('static', filename=m.home_team_id ~ '_xsmall.png') }}" onerror="this.onerror=null; this.src='{{ url_for('static', filename='none.png') }}'" class="w-8 h-8 object-contain">
                                     <span class="font-bold text-center truncate w-full">{{ get_short_name(m.home_team) }}</span>
                                 </div>
                                 <span class="bg-slate-800 py-1 rounded-lg font-mono font-black text-center">{{ m.score or 'VS' }}</span>

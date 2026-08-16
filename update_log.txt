@@ -4,3 +4,9 @@
 2026-08-15 15:24:02 - ERROR - ⚠️ No se encontraron partidos para la ronda 6.
 2026-08-15 15:24:02 - INFO - ✅ Ciclo de actualización completado exitosamente (0 partidos procesados).
 2026-08-15 15:24:02 - INFO - --- Fin del ciclo de actualización ---
+2026-08-16 15:24:52 - INFO - Último partido finalizado: 2026-08-14 20:30:00 | Torneo: Clausura | Fecha: 5
+2026-08-16 15:24:52 - INFO - Próximo partido: 2026-08-15 14:30:00 | Torneo: Clausura | Fecha: 5
+2026-08-16 15:24:57 - ERROR - ⚠️ No se encontraron partidos para la ronda 5.
+2026-08-16 15:25:01 - ERROR - ⚠️ No se encontraron partidos para la ronda 6.
+2026-08-16 15:25:01 - INFO - ✅ Ciclo de actualización completado exitosamente (0 partidos procesados).
+2026-08-16 15:25:01 - INFO - --- Fin del ciclo de actualización ---

@@ -13,15 +13,18 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
 
 DB_NAME = "ARGSTATS.db"
 
+ARG_TZ = datetime.timezone(datetime.timedelta(hours=-3))
+
 def adjust_utc_to_arg(timestamp):
     """
-    Convierte un timestamp a hora local de Argentina (UTC-3).
+    Convierte un timestamp a fecha y hora en zona horaria de Argentina (UTC-3),
+    garantizando coherencia sin importar la zona horaria del servidor (GitHub Actions/Ubuntu o Local).
     """
     if timestamp is None:
         return None
-    utc_time = datetime.datetime.utcfromtimestamp(timestamp)
-    arg_time = utc_time - datetime.timedelta(hours=3)
-    return arg_time
+    dt_utc = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc)
+    dt_arg = dt_utc.astimezone(ARG_TZ).replace(tzinfo=None)
+    return dt_arg.strftime('%Y-%m-%d %H:%M:%S')
 
 def load_match_data(match_data):
     connection = sqlite3.connect(DB_NAME, timeout=30)
@@ -43,7 +46,7 @@ def load_match_data(match_data):
 
     match = {
         "id": match_data.get("id", None),
-        "date": datetime.datetime.fromtimestamp(match_data.get("startTimestamp", None)) if match_data.get("startTimestamp", None) is not None else None,
+        "date": adjust_utc_to_arg(match_data.get("startTimestamp", None)),
         "finished": match_data.get("status", {}).get("type", None) == "finished",
         "cancelled": match_data.get("status", {}).get("type", None) == "postponed",
         "tournament": match_data.get("tournament", {}).get("name", None).split(", ")[1] if match_data.get("tournament", {}).get("name", None) else None,

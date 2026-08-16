@@ -152,3 +152,104 @@
 2026-08-16 17:39:09 - INFO - Partido 16667400 (CA Talleres vs Rosario Central): No finalizado (notstarted). Solo info básica actualizada.
 2026-08-16 17:39:10 - INFO - ✅ Ciclo de actualización completado exitosamente (30 partidos procesados).
 2026-08-16 17:39:10 - INFO - --- Fin del ciclo de actualización ---
+2026-08-16 15:15:57 - INFO - Último partido finalizado: 2026-08-16 00:15:00 | Torneo: Clausura | Fecha: 5
+2026-08-16 15:15:57 - INFO - Próximo partido: 2026-08-16 18:00:00 | Torneo: Clausura | Fecha: 5
+2026-08-16 15:15:57 - INFO - 🌐 [ScraperAPI] Modo ScraperAPI activado para peticiones.
+2026-08-16 15:15:58 - INFO - ✅Partido 16667393 finalizado.
+2026-08-16 15:15:58 - INFO - ✅Partido 16667389 finalizado.
+2026-08-16 15:15:58 - INFO - ✅Partido 16671562 finalizado.
+2026-08-16 15:15:58 - INFO - ✅Partido 16671559 finalizado.
+2026-08-16 15:15:58 - INFO - ✅Partido 16667396 finalizado.
+2026-08-16 15:15:58 - INFO - ✅Partido 16671565 finalizado.
+2026-08-16 15:15:58 - INFO - ✅Partido 16671563 finalizado.
+2026-08-16 15:15:58 - INFO - ✅Partido 16667391 finalizado.
+2026-08-16 15:15:58 - WARNING - ⚠️Partido 16667390 no iniciado.
+2026-08-16 15:15:58 - WARNING - ⚠️Partido 16671566 no iniciado.
+2026-08-16 15:15:58 - WARNING - ⚠️Partido 16671567 no iniciado.
+2026-08-16 15:15:58 - WARNING - ⚠️Partido 16667392 no iniciado.
+2026-08-16 15:15:58 - WARNING - ⚠️Partido 16671560 no iniciado.
+2026-08-16 15:15:58 - WARNING - ⚠️Partido 16671564 no iniciado.
+2026-08-16 15:15:58 - WARNING - ⚠️Partido 16671561 no iniciado.
+2026-08-16 15:15:58 - INFO - Se encontraron 15 partidos para la ronda 5 del torneo Clausura.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16671571 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16671570 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16671572 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16671574 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16671569 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16671575 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16671576 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16667394 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16667398 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16667395 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16667397 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16667399 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16671573 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16667401 no iniciado.
+2026-08-16 15:15:59 - WARNING - ⚠️Partido 16667400 no iniciado.
+2026-08-16 15:15:59 - INFO - Se encontraron 15 partidos para la ronda 6 del torneo Clausura.
+2026-08-16 15:15:59 - INFO - [1/30] Procesando partido ID: 16667393...
+2026-08-16 15:16:09 - INFO - ✅ Partido 16667393 (Racing Club vs Banfield): Actualizado completamente.
+2026-08-16 15:16:09 - INFO - [2/30] Procesando partido ID: 16667389...
+2026-08-16 15:16:22 - INFO - ✅ Partido 16667389 (Aldosivi vs Tigre): Actualizado completamente.
+2026-08-16 15:16:23 - INFO - [3/30] Procesando partido ID: 16671562...
+2026-08-16 15:16:36 - INFO - ✅ Partido 16671562 (San Lorenzo vs Club Atlético Unión de Santa Fe): Actualizado completamente.
+2026-08-16 15:16:37 - INFO - [4/30] Procesando partido ID: 16671559...
+2026-08-16 15:16:48 - INFO - ✅ Partido 16671559 (Estudiantes de La Plata vs Gimnasia y Esgrima): Actualizado completamente.
+2026-08-16 15:16:48 - INFO - [5/30] Procesando partido ID: 16667396...
+2026-08-16 15:17:02 - INFO - ✅ Partido 16667396 (Club Atlético Belgrano vs Independiente Rivadavia): Actualizado completamente.
+2026-08-16 15:17:03 - INFO - [6/30] Procesando partido ID: 16671565...
+2026-08-16 15:17:14 - INFO - ✅ Partido 16671565 (Newell's Old Boys vs Deportivo Riestra): Actualizado completamente.
+2026-08-16 15:17:15 - INFO - [7/30] Procesando partido ID: 16671563...
+2026-08-16 15:17:26 - INFO - ✅ Partido 16671563 (Club Atlético Platense vs Boca Juniors): Actualizado completamente.
+2026-08-16 15:17:26 - INFO - [8/30] Procesando partido ID: 16667391...
+2026-08-16 15:17:30 - INFO - Partido 16667391 (Sarmiento vs Huracán): No finalizado (inprogress). Solo info básica actualizada.
+2026-08-16 15:17:30 - INFO - [9/30] Procesando partido ID: 16667390...
+2026-08-16 15:17:31 - INFO - Partido 16667390 (River Plate vs Argentinos Juniors): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:31 - INFO - [10/30] Procesando partido ID: 16671566...
+2026-08-16 15:17:33 - INFO - Partido 16671566 (Barracas Central vs Rosario Central): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:33 - INFO - [11/30] Procesando partido ID: 16671567...
+2026-08-16 15:17:34 - INFO - Partido 16671567 (Central Córdoba vs Instituto De Córdoba): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:35 - INFO - [12/30] Procesando partido ID: 16667392...
+2026-08-16 15:17:35 - INFO - Partido 16667392 (Estudiantes de Río Cuarto vs Atlético Tucumán): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:35 - INFO - [13/30] Procesando partido ID: 16671560...
+2026-08-16 15:17:36 - INFO - Partido 16671560 (CA Lanús vs CA Independiente): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:36 - INFO - [14/30] Procesando partido ID: 16671564...
+2026-08-16 15:17:38 - INFO - Partido 16671564 (Vélez Sarsfield vs Defensa y Justicia): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:38 - INFO - [15/30] Procesando partido ID: 16671561...
+2026-08-16 15:17:38 - INFO - Partido 16671561 (Gimnasia y Esgrima Mendoza vs CA Talleres): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:39 - INFO - [16/30] Procesando partido ID: 16671571...
+2026-08-16 15:17:40 - INFO - Partido 16671571 (Aldosivi vs Club Atlético Unión de Santa Fe): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:41 - INFO - [17/30] Procesando partido ID: 16671570...
+2026-08-16 15:17:41 - INFO - Partido 16671570 (Estudiantes de Río Cuarto vs San Lorenzo): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:41 - INFO - [18/30] Procesando partido ID: 16671572...
+2026-08-16 15:17:42 - INFO - Partido 16671572 (Atlético Tucumán vs Instituto De Córdoba): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:43 - INFO - [19/30] Procesando partido ID: 16671574...
+2026-08-16 15:17:43 - INFO - Partido 16671574 (Gimnasia y Esgrima vs Gimnasia y Esgrima Mendoza): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:44 - INFO - [20/30] Procesando partido ID: 16671569...
+2026-08-16 15:17:44 - INFO - Partido 16671569 (CA Independiente vs Independiente Rivadavia): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:45 - INFO - [21/30] Procesando partido ID: 16671575...
+2026-08-16 15:17:45 - INFO - Partido 16671575 (Huracán vs Deportivo Riestra): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:46 - INFO - [22/30] Procesando partido ID: 16671576...
+2026-08-16 15:17:46 - INFO - Partido 16671576 (Newell's Old Boys vs Banfield): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:46 - INFO - [23/30] Procesando partido ID: 16667394...
+2026-08-16 15:17:47 - INFO - Partido 16667394 (Barracas Central vs Club Atlético Platense): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:48 - INFO - [24/30] Procesando partido ID: 16667398...
+2026-08-16 15:17:50 - INFO - Partido 16667398 (Sarmiento vs Estudiantes de La Plata): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:50 - INFO - [25/30] Procesando partido ID: 16667395...
+2026-08-16 15:17:51 - INFO - Partido 16667395 (Club Atlético Belgrano vs Defensa y Justicia): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:51 - INFO - [26/30] Procesando partido ID: 16667397...
+2026-08-16 15:17:52 - INFO - Partido 16667397 (River Plate vs Vélez Sarsfield): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:52 - INFO - [27/30] Procesando partido ID: 16667399...
+2026-08-16 15:17:54 - INFO - Partido 16667399 (Racing Club vs Boca Juniors): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:54 - INFO - [28/30] Procesando partido ID: 16671573...
+2026-08-16 15:17:55 - INFO - Partido 16671573 (Tigre vs Central Córdoba): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:56 - INFO - [29/30] Procesando partido ID: 16667401...
+2026-08-16 15:17:56 - INFO - Partido 16667401 (CA Lanús vs Argentinos Juniors): No finalizado (notstarted). Solo info básica actualizada.
+2026-08-16 15:17:57 - INFO - [30/30] Procesando partido ID: 16667400...
+2026-08-16 15:17:57 - ERROR - ❌ [ScraperAPI] 403 Forbidden en event/16667400 (Intento 1/3)
+2026-08-16 15:17:59 - ERROR - ❌ [ScraperAPI] 403 Forbidden en event/16667400 (Intento 2/3)
+2026-08-16 15:18:01 - ERROR - ❌ [ScraperAPI] 403 Forbidden en event/16667400 (Intento 3/3)
+2026-08-16 15:18:03 - ERROR - ❌ [ScraperAPI] Fallaron todos los 3 intentos para event/16667400
+2026-08-16 15:18:03 - WARNING - ⚠️ Partido 16667400: Sin respuesta o datos de evento vacíos.
+2026-08-16 15:18:03 - INFO - ✅ Ciclo de actualización completado exitosamente (30 partidos procesados).
+2026-08-16 15:18:03 - INFO - --- Fin del ciclo de actualización ---

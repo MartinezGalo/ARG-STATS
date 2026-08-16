@@ -29,6 +29,7 @@ jobs:
           
       - name: Ejecutar Actualización
         env:
+          SCRAPERAPI_KEY: ${{ secrets.SCRAPERAPI_KEY }}
           SOFA_PROXY: ${{ secrets.SOFA_PROXY }}
         run: |
           python api.py

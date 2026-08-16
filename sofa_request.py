@@ -2,6 +2,8 @@
 Módulo de peticiones a Sofascore.
 Utiliza curl_cffi para emulación TLS a nivel C.
 """
+import logging
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -27,11 +29,20 @@ _DEFAULT_HEADERS = {
 
 def get_session():
     """
-    Inicializa o retorna la sesión HTTP ligera con impersonación TLS de Chrome.
+    Inicializa o retorna la sesión HTTP ligera con impersonación TLS de Chrome y soporte para proxy.
     """
     global _session
     if _session is None:
-        _session = requests.Session(impersonate="chrome124")
+        proxy = os.getenv("SOFA_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+        if proxy and proxy.strip():
+            proxy = proxy.strip()
+            proxies = {"http": proxy, "https": proxy}
+            _session = requests.Session(impersonate="chrome124", proxies=proxies)
+            # Log sin exponer posibles contraseñas en URL del proxy
+            safe_proxy = proxy.split('@')[-1] if '@' in proxy else proxy
+            logging.info(f"🌐 [Proxy] Sesión inicializada con proxy: {safe_proxy}")
+        else:
+            _session = requests.Session(impersonate="chrome124")
         _session.headers.update(_DEFAULT_HEADERS)
     return _session
 
@@ -65,7 +76,7 @@ def close_driver():
 
 def sofa_request(endpoint, params=None, max_retries=3):
     """
-    Realiza peticiones HTTP ultrarrápidas a la API de Sofascore.
+    Realiza peticiones HTTP ultrarrápidas a la API de Sofascore con reintentos y logging detallado.
     """
     session = get_session()
     target_url = f"{base_url}/{endpoint}"
@@ -73,24 +84,32 @@ def sofa_request(endpoint, params=None, max_retries=3):
         query_string = '&'.join(f"{k}={v}" for k, v in params.items())
         target_url += f"?{query_string}"
 
-    for attempt in range(max_retries):
+    for attempt in range(1, max_retries + 1):
         try:
             r = session.get(target_url, timeout=10)
             if r.status_code == 200:
                 try:
                     return r.json()
-                except Exception:
+                except Exception as json_err:
+                    logging.warning(f"⚠️ [Sofascore] Error parseando JSON de {endpoint}: {json_err}")
                     return {}
             elif r.status_code == 404:
+                logging.warning(f"⚠️ [Sofascore] 404 Not Found: {endpoint}")
                 return {}
-            elif r.status_code in (403, 429):
+            elif r.status_code == 403:
+                logging.error(f"❌ [Sofascore] 403 Forbidden (Bloqueo de IP / Cloudflare) al consultar {endpoint} (Intento {attempt}/{max_retries})")
                 time.sleep(1.0 + attempt * 0.5)
-                continue
+            elif r.status_code == 429:
+                logging.warning(f"⚠️ [Sofascore] 429 Too Many Requests (Rate limit) en {endpoint} (Intento {attempt}/{max_retries})")
+                time.sleep(2.0 + attempt * 1.0)
             else:
-                time.sleep(0.3)
-        except Exception:
-            time.sleep(0.5)
+                logging.warning(f"⚠️ [Sofascore] HTTP {r.status_code} en {endpoint} (Intento {attempt}/{max_retries})")
+                time.sleep(0.5)
+        except Exception as e:
+            logging.error(f"❌ [Sofascore] Error de conexión en {endpoint} (Intento {attempt}/{max_retries}): {e}")
+            time.sleep(0.8)
 
+    logging.error(f"❌ [Sofascore] Fallaron todos los {max_retries} intentos para {endpoint}")
     return {}
 
 def _fetch_single_heatmap(session, match_id, player_id):

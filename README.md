@@ -51,7 +51,6 @@ Explora la aplicación en producción aquí:
 * **Procesamiento de Datos:** [Pandas](https://pandas.pydata.org/)
 * **Networking / Scraping:** [`curl_cffi`](https://github.com/lexiforest/curl_cffi), Requests, BeautifulSoup4
 * **Frontend:** HTML5 Semántico, CSS3, JavaScript Vanilla, Jinja2 Templates
-* **CI/CD & Automatización:** GitHub Actions (`auto_update.yml`)
 
 ---
 

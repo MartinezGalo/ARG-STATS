@@ -4,6 +4,5 @@ requests
 beautifulsoup4
 curl_cffi
 gunicorn
-selenium
-undetected-chromedriver
-webdriver-manager
+playwright
+camoufox

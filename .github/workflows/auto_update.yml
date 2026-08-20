@@ -23,18 +23,14 @@ jobs:
         with:
           python-version: '3.11'
           
-      - name: Instalar Dependencias del Sistema (Xvfb)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
-      - name: Instalar Librerías de Python
+      - name: Instalar Librerías de Python y Camoufox
         run: |
           pip install -r requirements.txt
+          python -m camoufox fetch
           
       - name: Ejecutar Actualización
         run: |
-          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python api.py
+          python api.py
         
       - name: Guardar Cambios en GitHub
         id: commit_step

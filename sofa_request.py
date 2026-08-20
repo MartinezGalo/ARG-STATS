@@ -29,7 +29,7 @@ _warmed_up = False
 
 
 def _build_session():
-    """Construye e inicializa una instancia optimizada de Camoufox."""
+    """Construye e inicializa una instancia optimizada de Camoufox con evasión avanzada."""
     global _camoufox_cm, _shared_browser, _shared_page, _warmed_up
     if not HAS_CAMOUFOX:
         raise RuntimeError("No se encontró la librería 'camoufox'. Instálala con 'pip install camoufox'.")
@@ -37,17 +37,24 @@ def _build_session():
     # Si ya existía una sesión, limpiarla
     close_driver()
 
+    is_linux = sys.platform.startswith("linux")
+    has_display = bool(os.getenv("DISPLAY"))
+    # Si estamos en Linux con DISPLAY (ej. xvfb-run en GitHub Actions), usamos headless=False para evasión 100% nativa
+    headless_mode = not (is_linux and has_display)
+
     try:
-        logging.info("🚀 [Camoufox] Iniciando navegador anti-detección...")
+        mode_str = "Headless" if headless_mode else "Xvfb Display (Headful)"
+        logging.info(f"🚀 [Camoufox] Iniciando navegador anti-detección ({mode_str})...")
         _camoufox_cm = Camoufox(
-            headless=True,
-            geoip=False,
-            humanize=False
+            headless=headless_mode,
+            os=("windows", "macos"),
+            humanize=True,
+            geoip=False
         )
         _shared_browser = _camoufox_cm.__enter__()
         _shared_page = _shared_browser.new_page()
         _warmed_up = False
-        logging.info("🚀 [Camoufox] Sesión del navegador iniciada exitosamente.")
+        logging.info(f"🚀 [Camoufox] Sesión del navegador iniciada exitosamente ({mode_str}).")
         return _shared_page
     except Exception as e:
         logging.error(f"❌ [Camoufox] Error al iniciar Camoufox: {e}")
@@ -55,14 +62,45 @@ def _build_session():
         raise
 
 
+def _wait_for_cloudflare(page, timeout=30):
+    """Espera activamente a que se resuelva cualquier desafío de Cloudflare o Turnstile."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            title = (page.title() or "").lower()
+            if "just a moment" in title or "attention required" in title or "checking your browser" in title:
+                # Intentar interactuar con el checkbox de Turnstile si está presente
+                try:
+                    for frame in page.frames:
+                        try:
+                            checkbox = frame.locator('input[type="checkbox"], .ctp-checkbox-label, #challenge-stage')
+                            if checkbox.count() > 0:
+                                checkbox.first.click(timeout=1000)
+                                break
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                time.sleep(1.0)
+            else:
+                return True
+        except Exception:
+            time.sleep(1.0)
+    return False
+
+
 def _warmup_session(page):
-    """Establece la sesión visitando Sofascore para resolver tokens iniciales de Cloudflare y cookies de sesión."""
+    """Establece la sesión visitando Sofascore para resolver tokens de Cloudflare y cookies de sesión."""
     global _warmed_up
     if _warmed_up:
         return
     try:
-        logging.info("🌐 [Camoufox] Inicializando sesión en Sofascore (https://www.sofascore.com/)...")
-        page.goto("https://www.sofascore.com/", timeout=45000)
+        warmup_url = "https://www.sofascore.com/tournament/football/argentina/liga-profesional-de-futbol/155"
+        logging.info(f"🌐 [Camoufox] Inicializando sesión en Sofascore ({warmup_url})...")
+        page.goto(warmup_url, timeout=45000)
+        
+        _wait_for_cloudflare(page, timeout=25)
+
         try:
             page.wait_for_load_state("networkidle", timeout=15000)
         except Exception:
@@ -72,7 +110,7 @@ def _warmup_session(page):
         for _ in range(10):
             cookies = page.context.cookies()
             cookie_names = {c.get("name") for c in cookies}
-            if "browser_data" in cookie_names or len(cookies) >= 5:
+            if "browser_data" in cookie_names or len(cookies) >= 8:
                 break
             time.sleep(0.5)
 
@@ -208,7 +246,8 @@ def sofa_request(endpoint, params=None, max_retries=3):
                 else:
                     logging.warning(f"⚠️ [Camoufox] Fetch retornó {res.get('__status', 'error')} en {endpoint} (Intento {attempt}/{max_retries}). Revalidando página...")
                     try:
-                        page.goto("https://www.sofascore.com/", timeout=35000)
+                        page.goto("https://www.sofascore.com/tournament/football/argentina/liga-profesional-de-futbol/155", timeout=35000)
+                        _wait_for_cloudflare(page, timeout=20)
                         try:
                             page.wait_for_load_state("networkidle", timeout=10000)
                         except Exception:

@@ -313,3 +313,18 @@
 2026-08-19 12:34:35 - ERROR - ⚠️ No se encontraron partidos para la ronda 6.
 2026-08-19 12:34:35 - INFO - ✅ Ciclo de actualización completado exitosamente (0 partidos procesados).
 2026-08-19 12:34:35 - INFO - --- Fin del ciclo de actualización ---
+2026-08-20 12:36:30 - INFO - Último partido finalizado: 2026-08-17 21:30:00 | Torneo: Clausura | Fecha: 5
+2026-08-20 12:36:30 - INFO - Próximo partido: 2026-08-21 14:30:00 | Torneo: Clausura | Fecha: 6
+2026-08-20 12:36:30 - INFO - 🌐 [ScraperAPI] Modo ScraperAPI activado para peticiones.
+2026-08-20 12:36:31 - ERROR - ❌ [ScraperAPI] 403 Forbidden en unique-tournament/155/season/87913/events/round/5 (Intento 1/3)
+2026-08-20 12:36:33 - ERROR - ❌ [ScraperAPI] 403 Forbidden en unique-tournament/155/season/87913/events/round/5 (Intento 2/3)
+2026-08-20 12:36:35 - ERROR - ❌ [ScraperAPI] 403 Forbidden en unique-tournament/155/season/87913/events/round/5 (Intento 3/3)
+2026-08-20 12:36:37 - ERROR - ❌ [ScraperAPI] Fallaron todos los 3 intentos para unique-tournament/155/season/87913/events/round/5
+2026-08-20 12:36:37 - ERROR - ⚠️ No se encontraron partidos para la ronda 5.
+2026-08-20 12:36:37 - ERROR - ❌ [ScraperAPI] 403 Forbidden en unique-tournament/155/season/87913/events/round/6 (Intento 1/3)
+2026-08-20 12:36:39 - ERROR - ❌ [ScraperAPI] 403 Forbidden en unique-tournament/155/season/87913/events/round/6 (Intento 2/3)
+2026-08-20 12:36:41 - ERROR - ❌ [ScraperAPI] 403 Forbidden en unique-tournament/155/season/87913/events/round/6 (Intento 3/3)
+2026-08-20 12:36:43 - ERROR - ❌ [ScraperAPI] Fallaron todos los 3 intentos para unique-tournament/155/season/87913/events/round/6
+2026-08-20 12:36:43 - ERROR - ⚠️ No se encontraron partidos para la ronda 6.
+2026-08-20 12:36:43 - INFO - ✅ Ciclo de actualización completado exitosamente (0 partidos procesados).
+2026-08-20 12:36:43 - INFO - --- Fin del ciclo de actualización ---

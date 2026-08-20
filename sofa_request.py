@@ -56,7 +56,7 @@ def _build_session():
 
 
 def _warmup_session(page):
-    """Establece la sesión visitando Sofascore para resolver tokens iniciales de Cloudflare."""
+    """Establece la sesión visitando Sofascore para resolver tokens iniciales de Cloudflare y cookies de sesión."""
     global _warmed_up
     if _warmed_up:
         return
@@ -64,11 +64,20 @@ def _warmup_session(page):
         logging.info("🌐 [Camoufox] Inicializando sesión en Sofascore (https://www.sofascore.com/)...")
         page.goto("https://www.sofascore.com/", timeout=45000)
         try:
-            page.wait_for_load_state("domcontentloaded", timeout=15000)
+            page.wait_for_load_state("networkidle", timeout=15000)
         except Exception:
             pass
-        time.sleep(2.0)
-        logging.info("✅ [Camoufox] Sesión de Sofascore inicializada y Cloudflare superado.")
+
+        # Esperar activamente a que las cookies y el entorno de Sofascore estén listos
+        for _ in range(10):
+            cookies = page.context.cookies()
+            cookie_names = {c.get("name") for c in cookies}
+            if "browser_data" in cookie_names or len(cookies) >= 5:
+                break
+            time.sleep(0.5)
+
+        time.sleep(1.5)
+        logging.info("✅ [Camoufox] Sesión de Sofascore inicializada y cookies listas.")
         _warmed_up = True
     except Exception as e:
         logging.warning(f"⚠️ [Camoufox] Aviso durante warmup en Sofascore: {e}")
@@ -165,7 +174,9 @@ def sofa_request(endpoint, params=None, max_retries=3):
                     'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
                     'Sec-Fetch-Dest': 'empty',
                     'Sec-Fetch-Mode': 'cors',
-                    'Sec-Fetch-Site': 'same-origin'
+                    'Sec-Fetch-Site': 'same-origin',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
                 },
                 credentials: 'include'
             });
@@ -197,7 +208,11 @@ def sofa_request(endpoint, params=None, max_retries=3):
                 else:
                     logging.warning(f"⚠️ [Camoufox] Fetch retornó {res.get('__status', 'error')} en {endpoint} (Intento {attempt}/{max_retries}). Revalidando página...")
                     try:
-                        page.goto("https://www.sofascore.com/", timeout=30000)
+                        page.goto("https://www.sofascore.com/", timeout=35000)
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=10000)
+                        except Exception:
+                            pass
                         time.sleep(2.0)
                     except Exception:
                         pass

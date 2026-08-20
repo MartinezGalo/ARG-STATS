@@ -23,13 +23,18 @@ jobs:
         with:
           python-version: '3.11'
           
-      - name: Instalar Librerías
+      - name: Instalar Dependencias del Sistema (Xvfb)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Instalar Librerías de Python
         run: |
           pip install -r requirements.txt
           
       - name: Ejecutar Actualización
         run: |
-          python api.py
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python api.py
         
       - name: Guardar Cambios en GitHub
         id: commit_step

@@ -87,6 +87,11 @@ def _build_driver():
     major_version = _get_chrome_major_version() or 124
     user_agent = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major_version}.0.0.0 Safari/537.36"
 
+    is_linux = sys.platform.startswith("linux")
+    has_display = bool(os.getenv("DISPLAY"))
+    # Si estamos en Linux con DISPLAY (ej. xvfb-run en GitHub Actions), usamos headless=False para evasión 100% nativa
+    headless_mode = not (is_linux and has_display)
+
     # 1. Intentar con undetected_chromedriver para evadir bloqueos de Cloudflare
     if HAS_UC:
         try:
@@ -96,15 +101,16 @@ def _build_driver():
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--window-size=1920,1080")
-            chrome_options.add_argument("--blink-settings=imagesEnabled=false")
+            chrome_options.add_argument("--start-maximized")
             chrome_options.add_argument(f'--user-agent={user_agent}')
 
             driver = uc.Chrome(
                 options=chrome_options,
-                headless=True,
+                headless=headless_mode,
                 version_main=major_version
             )
-            logging.info("🚀 [ChromeDriver] Sesión iniciada con undetected-chromedriver (Headless).")
+            mode_str = "Headless" if headless_mode else "Xvfb Display"
+            logging.info(f"🚀 [ChromeDriver] Sesión iniciada con undetected-chromedriver ({mode_str}).")
             return driver
         except Exception as e:
             logging.warning(f"⚠️ [ChromeDriver] Falló undetected-chromedriver ({e}). Intentando con Selenium estándar...")
@@ -113,20 +119,37 @@ def _build_driver():
     if HAS_SELENIUM:
         chrome_options = ChromeOptions()
         chrome_options.page_load_strategy = 'eager'
-        chrome_options.add_argument("--headless=new")
+        if headless_mode:
+            chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--blink-settings=imagesEnabled=false")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_argument(f'--user-agent={user_agent}')
 
         driver = webdriver.Chrome(options=chrome_options)
-        logging.info("🚀 [ChromeDriver] Sesión iniciada con Selenium Chrome estándar (Headless=new).")
+        mode_str = "Headless=new" if headless_mode else "Xvfb Display"
+        logging.info(f"🚀 [ChromeDriver] Sesión iniciada con Selenium Chrome estándar ({mode_str}).")
         return driver
 
     raise RuntimeError("No se encontró undetected-chromedriver ni selenium instalados.")
+
+
+def _wait_for_cloudflare(driver, timeout=25):
+    """Espera activamente a que se resuelva cualquier desafío de Cloudflare o Turnstile."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            title = (driver.title or "").lower()
+            source = (driver.page_source or "").lower()
+            if "just a moment" in title or "checking your browser" in source or "cf-turnstile" in source or "attention required" in title:
+                time.sleep(1.0)
+            else:
+                return True
+        except Exception:
+            time.sleep(1.0)
+    return False
 
 
 def _warmup_driver(driver):
@@ -135,13 +158,19 @@ def _warmup_driver(driver):
     if _warmed_up:
         return
     try:
-        logging.info("🌐 [ChromeDriver] Inicializando sesión en Sofascore...")
-        driver.set_page_load_timeout(30)
-        driver.set_script_timeout(30)
+        logging.info("🌐 [ChromeDriver] Inicializando sesión en Sofascore (https://www.sofascore.com/)...")
+        driver.set_page_load_timeout(35)
+        driver.set_script_timeout(35)
         driver.get("https://www.sofascore.com/")
         time.sleep(2.0)
+
+        if not _wait_for_cloudflare(driver, timeout=25):
+            logging.warning("⚠️ [ChromeDriver] Cloudflare tardó más de lo esperado en resolverse.")
+        else:
+            logging.info("✅ [ChromeDriver] Sesión de Sofascore inicializada y Cloudflare superado.")
+
+        time.sleep(1.5)
         _warmed_up = True
-        logging.info("✅ [ChromeDriver] Sesión inicializada correctamente en Sofascore.")
     except Exception as e:
         logging.warning(f"⚠️ [ChromeDriver] Aviso durante warmup en Sofascore: {e}")
         _warmed_up = True
@@ -204,7 +233,7 @@ def sofa_request(endpoint, params=None, max_retries=3):
     """
     Realiza una petición a la API de Sofascore usando ChromeDriver.
     Ejecuta un fetch() asíncrono en el contexto del navegador para máxima velocidad,
-    y utiliza navegación directa como respaldo si es necesario.
+    preservando la sesión y cookies de Cloudflare en todo momento.
     """
     if endpoint.startswith("/"):
         endpoint = endpoint[1:]
@@ -214,22 +243,24 @@ def sofa_request(endpoint, params=None, max_retries=3):
         query_string = '&'.join(f"{k}={v}" for k, v in params.items())
         endpoint_path += f"?{query_string}"
 
-    target_url = f"https://www.sofascore.com{endpoint_path}"
-
     for attempt in range(1, max_retries + 1):
         try:
             driver = get_driver()
 
-            # Método 1: Async JavaScript Fetch dentro de la sesión activa de sofascore.com (Ultra-rápido ~50ms)
+            # Async JavaScript Fetch dentro de la sesión activa de sofascore.com
             js_script = """
             const callback = arguments[arguments.length - 1];
             const url = arguments[0];
             fetch(url, {
+                method: 'GET',
                 headers: {
                     'Accept': '*/*',
-                    'X-Requested-With': 'a25661',
-                    'Cache-Control': 'no-cache'
-                }
+                    'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+                    'Sec-Fetch-Dest': 'empty',
+                    'Sec-Fetch-Mode': 'cors',
+                    'Sec-Fetch-Site': 'same-origin'
+                },
+                credentials: 'include'
             })
             .then(res => {
                 if (res.status === 404) {
@@ -252,31 +283,14 @@ def sofa_request(endpoint, params=None, max_retries=3):
                 elif res.get("__status") == 404:
                     logging.warning(f"⚠️ [Sofascore] 404 Not Found en {endpoint}")
                     return {}
-                elif res.get("__status") == 403 or res.get("__error"):
-                    logging.warning(f"⚠️ [ChromeDriver] Fetch retornó {res.get('__status', 'error')} para {endpoint}. Intentando navegación directa...")
-
-            # Método 2: Navegación directa como respaldo
-            driver.get(target_url)
-            time.sleep(1.0)
-
-            try:
-                page_text = driver.find_element(By.TAG_NAME, "pre").text.strip()
-            except Exception:
-                try:
-                    page_text = driver.find_element(By.TAG_NAME, "body").text.strip()
-                except Exception:
-                    page_text = ""
-
-            if page_text:
-                try:
-                    data = json.loads(page_text)
-                    return data
-                except json.JSONDecodeError:
-                    if "Cloudflare" in driver.page_source or "Just a moment" in driver.page_source:
-                        logging.warning(f"⚠️ [ChromeDriver] Desafío Cloudflare detectado (Intento {attempt}/{max_retries}). Esperando...")
-                        time.sleep(3.0)
-                    else:
-                        logging.warning(f"⚠️ [ChromeDriver] Respuesta no JSON en {endpoint}: {page_text[:120]}")
+                else:
+                    logging.warning(f"⚠️ [ChromeDriver] Fetch retornó {res.get('__status', 'error')} en {endpoint} (Intento {attempt}/{max_retries}). Revalidando página...")
+                    try:
+                        driver.get("https://www.sofascore.com/")
+                        _wait_for_cloudflare(driver, timeout=20)
+                        time.sleep(2.0)
+                    except Exception:
+                        pass
 
         except Exception as e:
             logging.error(f"❌ [ChromeDriver] Error consultando {endpoint} (Intento {attempt}/{max_retries}): {e}")
@@ -304,11 +318,15 @@ def get_match_all_heatmaps(match_id, player_ids):
         Promise.all(playerIds.map(pid => {
             const url = '/api/v1/event/' + matchId + '/player/' + pid + '/heatmap';
             return fetch(url, {
+                method: 'GET',
                 headers: {
                     'Accept': '*/*',
-                    'X-Requested-With': 'a25661',
-                    'Cache-Control': 'no-cache'
-                }
+                    'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+                    'Sec-Fetch-Dest': 'empty',
+                    'Sec-Fetch-Mode': 'cors',
+                    'Sec-Fetch-Site': 'same-origin'
+                },
+                credentials: 'include'
             })
             .then(r => r.ok ? r.json() : {})
             .then(d => ({ pid: pid, heatmap: d.heatmap || [] }))

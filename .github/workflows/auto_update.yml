@@ -10,8 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      TZ: "America/Argentina/Buenos_Aires"
       
     steps:
       - name: Descargar Repositorio
@@ -27,12 +25,9 @@ jobs:
           
       - name: Instalar Librerías
         run: |
-          pip install requests pandas beautifulsoup4 curl_cffi
+          pip install -r requirements.txt
           
       - name: Ejecutar Actualización
-        env:
-          SCRAPERAPI_KEY: ${{ secrets.SCRAPERAPI_KEY }}
-          SOFA_PROXY: ${{ secrets.SOFA_PROXY }}
         run: |
           python api.py
         

@@ -62,19 +62,21 @@ def update_match(match_id):
             return
 
         # Si el partido finalizó, descargamos detalles completos
-        player_match_data = sofa.get_match_lineups(match_id)
-        incidents_data = sofa.get_match_incidents(match_id).get("incidents", None)
-        shotmap_data = sofa.get_match_shotmap(match_id).get("shotmap", None)
+        player_match_data = sofa.get_match_lineups(match_id) or {}
+        incidents_res = sofa.get_match_incidents(match_id) or {}
+        incidents_data = incidents_res.get("incidents", None)
+        shotmap_res = sofa.get_match_shotmap(match_id) or {}
+        shotmap_data = shotmap_res.get("shotmap", None)
 
         # Mapas de calor en lote
         heatmaps_data = []
-        home_players = player_match_data.get("home", {}).get("players", []) or []
-        away_players = player_match_data.get("away", {}).get("players", []) or []
+        home_players = (player_match_data.get("home") or {}).get("players", []) or []
+        away_players = (player_match_data.get("away") or {}).get("players", []) or []
         all_players = home_players + away_players
 
         active_players = [
             p for p in all_players 
-            if p.get("statistics", {}).get("minutesPlayed", None) is not None
+            if (p.get("statistics") or {}).get("minutesPlayed", None) is not None
         ]
         player_ids = [p.get("player", {}).get("id") for p in active_players if p.get("player", {}).get("id")]
 

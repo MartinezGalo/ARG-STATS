@@ -328,3 +328,15 @@
 2026-08-20 12:36:43 - ERROR - ⚠️ No se encontraron partidos para la ronda 6.
 2026-08-20 12:36:43 - INFO - ✅ Ciclo de actualización completado exitosamente (0 partidos procesados).
 2026-08-20 12:36:43 - INFO - --- Fin del ciclo de actualización ---
+2026-08-20 17:18:20 - INFO - Último partido finalizado: 2026-08-17 21:30:00 | Torneo: Clausura | Fecha: 5
+2026-08-20 17:18:20 - INFO - Próximo partido: 2026-08-21 14:30:00 | Torneo: Clausura | Fecha: 6
+2026-08-20 17:18:25 - INFO - patching driver executable /home/runner/.local/share/undetected_chromedriver/undetected_chromedriver
+2026-08-20 17:18:37 - INFO - 🚀 [ChromeDriver] Sesión iniciada con undetected-chromedriver (Headless).
+2026-08-20 17:18:37 - INFO - 🌐 [ChromeDriver] Inicializando sesión en Sofascore...
+2026-08-20 17:18:40 - INFO - ✅ [ChromeDriver] Sesión inicializada correctamente en Sofascore.
+2026-08-20 17:18:40 - WARNING - ⚠️ [ChromeDriver] Fetch retornó 403 para unique-tournament/155/season/87913/events/round/5. Intentando navegación directa...
+2026-08-20 17:18:41 - ERROR - ⚠️ No se encontraron partidos para la ronda 5.
+2026-08-20 17:18:41 - WARNING - ⚠️ [ChromeDriver] Fetch retornó 403 para unique-tournament/155/season/87913/events/round/6. Intentando navegación directa...
+2026-08-20 17:18:42 - ERROR - ⚠️ No se encontraron partidos para la ronda 6.
+2026-08-20 17:18:42 - INFO - ✅ Ciclo de actualización completado exitosamente (0 partidos procesados).
+2026-08-20 17:18:42 - INFO - --- Fin del ciclo de actualización ---

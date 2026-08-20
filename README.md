@@ -49,7 +49,7 @@ Explora la aplicación en producción aquí:
 * **Servidor WSGI:** [Gunicorn](https://gunicorn.org/) (Multithread)
 * **Base de Datos:** SQLite3 con vistas personalizadas e índices optimizados
 * **Procesamiento de Datos:** [Pandas](https://pandas.pydata.org/)
-* **Networking / Scraping:** [`curl_cffi`](https://github.com/lexiforest/curl_cffi), Requests, BeautifulSoup4
+* **Networking / Scraping:** [Camoufox](https://github.com/daijro/camoufox) (Firefox Anti-Detect), Playwright, Requests, BeautifulSoup4
 * **Frontend:** HTML5 Semántico, CSS3, JavaScript Vanilla, Jinja2 Templates
 
 ---
@@ -59,7 +59,7 @@ Explora la aplicación en producción aquí:
 ```text
 ├── app.py                  # Aplicación principal Flask (Rutas, controladores y lógica web)
 ├── api.py                  # Script de actualización e ingesta incremental de partidos
-├── sofa_request.py         # Módulo de red con curl_cffi y ThreadPoolExecutor para Sofascore
+├── sofa_request.py         # Módulo de red con Camoufox (Playwright) para Sofascore
 ├── data.py                 # Transformación y carga de datos crudos hacia SQLite
 ├── ARGSTATS.db             # Base de datos SQLite relacional
 ├── requirements.txt        # Dependencias del proyecto
@@ -100,6 +100,7 @@ source venv/bin/activate
 ### 3. Instalar dependencias
 ```bash
 pip install -r requirements.txt
+python -m camoufox fetch
 ```
 
 ### 4. Iniciar la aplicación en modo desarrollo

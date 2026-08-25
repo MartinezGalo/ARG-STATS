@@ -103,6 +103,8 @@ def init_notes_table():
     conn.commit()
     conn.close()
 
+init_notes_table()
+
 def get_match_context(conn):
     """Obtiene los mapeos de partidos finalizados para todos los equipos activos."""
     matches = conn.execute("""
@@ -1699,64 +1701,184 @@ def match_player_heatmap(match_id, player_id):
         "points": [dict(r) for r in rows]
     })
 
+
 @app.route('/player_info/<player_id>')
 @app.route('/player_info/<player_id>/<match_id>')
 def player_info(player_id, match_id=None):
     conn = get_db_connection()
 
-    # 1. Info basica
+    # 1. Info básica del jugador
     info = conn.execute('''
         SELECT pmd.*, m.home_team, m.away_team, m.home_team_id, m.away_team_id, m.score
         FROM player_match_details pmd
         JOIN matches m ON pmd.match_id = m.id
-        WHERE pmd.player_id = ? and minutes_played
+        WHERE pmd.player_id = ? AND pmd.minutes_played IS NOT NULL AND pmd.minutes_played > 0
         ORDER BY m.date DESC LIMIT 1
     ''', (player_id,)).fetchone()
 
-    teams_history = [r['team_id'] for r in conn.execute('SELECT DISTINCT team_id FROM player_match_details WHERE player_id = ?', (player_id,)).fetchall()]
+    if not info:
+        info = conn.execute('''
+            SELECT pmd.*, m.home_team, m.away_team, m.home_team_id, m.away_team_id, m.score
+            FROM player_match_details pmd
+            JOIN matches m ON pmd.match_id = m.id
+            WHERE pmd.player_id = ?
+            ORDER BY m.date DESC LIMIT 1
+        ''', (player_id,)).fetchone()
 
     if not info:
         conn.close()
         return jsonify({"error": "No data"}), 404
 
-    if not match_id or match_id in ('null', 'undefined', 'None', ''):
-        match_id = str(info['match_id'])
+    teams_history = [str(r['team_id']) for r in conn.execute(
+        'SELECT DISTINCT team_id FROM player_match_details WHERE player_id = ? AND team_id IS NOT NULL',
+        (player_id,)
+    ).fetchall()]
 
-    team_filter = request.args.get('teams')
-    if team_filter:
-        valid_teams = team_filter.split(',')
-    else:
-        valid_teams = teams_history
+    def process_match_row(m, default_team_id=None):
+        mid = str(m['match_id'])
+        tid = str(m['team_id']) if m['team_id'] else str(default_team_id or info['team_id'])
+        is_home = str(m['home_team_id']) == tid
+        team_name = m['home_team'] if is_home else m['away_team']
+        rival = m['away_team'] if is_home else m['home_team']
+        rival_id = str(m['away_team_id']) if is_home else str(m['home_team_id'])
+        score = m['score'] or ''
 
-    # Helper para stats
-    def get_stats_summary(m_ids):
-        if not m_ids: return {}
-        ids_str = ",".join([f"'{i}'" for i in m_ids])
-        teams_str = ",".join([f"'{t}'" for t in valid_teams])
-        s = conn.execute(f'''
+        res_val = 'D'
+        if score and '-' in score:
+            try:
+                h_s, a_s = map(int, score.split('-'))
+                if h_s == a_s:
+                    res_val = 'D'
+                elif (is_home and h_s > a_s) or (not is_home and a_s > h_s):
+                    res_val = 'W'
+                else:
+                    res_val = 'L'
+            except Exception:
+                pass
+
+        pm_mins = m['minutes_played'] if m['minutes_played'] is not None else 0
+        is_starter = m['is_starter'] if m['is_starter'] is not None else 0
+        is_sub = True if (is_starter == 0 and pm_mins > 0) else False
+
+        return {
+            "match_id": mid,
+            "date": m['date'],
+            "team_id": tid,
+            "team_name": team_name,
+            "rival": rival,
+            "rival_id": rival_id,
+            "cond": 'L' if is_home else 'V',
+            "score": score,
+            "result": res_val,
+            "minutes": pm_mins,
+            "is_sub": is_sub,
+            "match_stats": {
+                "pj": 1 if pm_mins > 0 else 0,
+                "mins": pm_mins,
+                "shots": m['shots'] or 0,
+                "target": m['target'] or 0,
+                "long": m['long'] or 0,
+                "headers": m['headers'] or 0,
+                "tackles": m['tackles'] or 0,
+                "offsides": m['offsides'] or 0,
+                "cards": m['cards'] or 0,
+                "f_c": m['f_c'] or 0,
+                "f_r": m['f_r'] or 0
+            }
+        }
+
+    # 2. Todos los partidos donde el jugador participó (con minutos > 0 o convocatorias)
+    player_matches_raw = conn.execute('''
+        SELECT 
+            pmd.match_id, pmd.team_id, pmd.minutes_played, pmd.is_starter,
+            pmd.fouls_committed as f_c, pmd.fouls_received as f_r,
+            pmd.tackles, pmd.offsides,
+            m.date, m.home_team, m.away_team, m.home_team_id, m.away_team_id, m.score,
+            (SELECT COUNT(*) FROM shots WHERE player_id = pmd.player_id AND match_id = pmd.match_id) as shots,
+            (SELECT COUNT(*) FROM shots_on_target WHERE player_id = pmd.player_id AND match_id = pmd.match_id) as target,
+            (SELECT COUNT(*) FROM shots_outside_box WHERE player_id = pmd.player_id AND match_id = pmd.match_id) as long,
+            (SELECT COUNT(*) FROM headers WHERE player_id = pmd.player_id AND match_id = pmd.match_id) as headers,
+            (SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE player_id = pmd.player_id AND match_id = pmd.match_id) as cards
+        FROM player_match_details pmd
+        JOIN matches m ON pmd.match_id = m.id
+        WHERE pmd.player_id = ? AND m.finished = 1
+        ORDER BY m.date DESC
+    ''', (player_id,)).fetchall()
+
+    all_matches = [process_match_row(r) for r in player_matches_raw]
+
+    # 3. Partidos de cada club del jugador (últimos 10 partidos del equipo, incluyendo si no jugó)
+    team_matches = {}
+    for tid in teams_history:
+        team_rows = conn.execute('''
             SELECT 
-                COUNT(*) as pj, SUM(minutes_played) as mins,
-                SUM(fouls_committed) as f_c, SUM(fouls_received) as f_r,
-                SUM(tackles) as tackles, SUM(offsides) as offsides, 0 as corners,
-                (SELECT COUNT(*) FROM shots WHERE player_id = ? AND match_id IN ({ids_str}) AND team_id IN ({teams_str})) as shots,
-                (SELECT COUNT(*) FROM shots_on_target WHERE player_id = ? AND match_id IN ({ids_str}) AND team_id IN ({teams_str})) as target,
-                (SELECT COUNT(*) FROM shots_outside_box WHERE player_id = ? AND match_id IN ({ids_str}) AND team_id IN ({teams_str})) as long,
-                (SELECT COUNT(*) FROM headers WHERE player_id = ? AND match_id IN ({ids_str}) AND team_id IN ({teams_str})) as headers,
-                (SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE player_id = ? AND match_id IN ({ids_str}) AND team_id IN ({teams_str})) as cards
-            FROM player_match_details WHERE player_id = ? AND match_id IN ({ids_str}) AND team_id IN ({teams_str})
-        ''', (player_id, player_id, player_id, player_id, player_id, player_id)).fetchone()
-        return dict(s)
+                m.id as match_id, m.date, m.home_team, m.away_team, m.home_team_id, m.away_team_id, m.score,
+                pmd.team_id, pmd.minutes_played, pmd.is_starter,
+                pmd.fouls_committed as f_c, pmd.fouls_received as f_r,
+                pmd.tackles, pmd.offsides,
+                (SELECT COUNT(*) FROM shots WHERE player_id = ? AND match_id = m.id) as shots,
+                (SELECT COUNT(*) FROM shots_on_target WHERE player_id = ? AND match_id = m.id) as target,
+                (SELECT COUNT(*) FROM shots_outside_box WHERE player_id = ? AND match_id = m.id) as long,
+                (SELECT COUNT(*) FROM headers WHERE player_id = ? AND match_id = m.id) as headers,
+                (SELECT COALESCE(SUM(CASE WHEN card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0) FROM cards WHERE player_id = ? AND match_id = m.id) as cards
+            FROM matches m
+            LEFT JOIN player_match_details pmd ON m.id = pmd.match_id AND pmd.player_id = ?
+            WHERE (m.home_team_id = ? OR m.away_team_id = ?) AND m.finished = 1
+            ORDER BY m.date DESC LIMIT 10
+        ''', (player_id, player_id, player_id, player_id, player_id, player_id, tid, tid)).fetchall()
+
+        team_matches[str(tid)] = [process_match_row(r, default_team_id=tid) for r in team_rows]
+
+    # Diccionario de nombres de equipos del jugador
+    teams_names = {}
+    for m in all_matches:
+        if m.get('team_id') and m.get('team_name'):
+            teams_names[str(m['team_id'])] = m['team_name']
+    for tid, tlist in team_matches.items():
+        for m in tlist:
+            if m.get('team_id') and m.get('team_name'):
+                teams_names[str(m['team_id'])] = m['team_name']
+    if str(info['team_id']) not in teams_names:
+        is_home = str(info['team_id']) == str(info['home_team_id'])
+        teams_names[str(info['team_id'])] = info['home_team'] if is_home else info['away_team']
+
+    # 4. Tiros del jugador
+    shots_rows = conn.execute('''
+        SELECT s.x, s.y, s.blocked_x, s.blocked_y, s.goal_cross_x, s.goal_cross_y,
+               s.is_blocked, s.outcome, s.situation, s.shot_type, s.on_target, s.minute,
+               m.home_team_id, m.away_team_id, s.team_id, m.date, m.id as match_id, m.home_team, m.away_team
+        FROM shots s
+        JOIN matches m ON s.match_id = m.id
+        WHERE s.player_id = ? AND s.x IS NOT NULL AND s.y IS NOT NULL
+        ORDER BY m.date DESC
+    ''', (player_id,)).fetchall()
+
+    player_shots = []
+    for s in shots_rows:
+        is_home = str(s['team_id']) == str(s['home_team_id'])
+        rival = s['away_team'] if is_home else s['home_team']
+        rival_id = str(s['away_team_id']) if is_home else str(s['home_team_id'])
+        let_cx = s['blocked_x'] if s['is_blocked'] else s['goal_cross_x']
+        let_cy = s['blocked_y'] if s['is_blocked'] else s['goal_cross_y']
+
+        player_shots.append({
+            "x": s['x'], "y": s['y'], "cx": let_cx, "cy": let_cy,
+            "is_blocked": s['is_blocked'], "outcome": s['outcome'],
+            "situation": s['situation'], "shot_type": s['shot_type'],
+            "on_target": s['on_target'], "minute": s['minute'],
+            "is_home": is_home, "date": s['date'], "match_id": str(s['match_id']),
+            "team_id": str(s['team_id']), "rival": rival, "rival_id": rival_id
+        })
+
     # Logica de Rankings (Top 20)
     def get_top_rankings():
-        # Definimos los componentes de cada metrica
-        # Estructura: (Etiqueta, Tabla/Join, Funcion Agregada, Filtro extra)
         metrics = [
             ("Tiros Totales", "shots s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", []),
             ("Tiros al Arco", "shots_on_target s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", []),
             ("Tiros Lejanos", "shots_outside_box s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", []),
             ("Faltas Cometidas", "player_match_details p", "SUM(p.fouls_committed)", []),
             ("Faltas Recibidas", "player_match_details p", "SUM(p.fouls_received)", []),
-            ("Tarjetas", "cards c JOIN player_match_details p ON c.player_id = p.player_id AND c.match_id = p.match_id", "COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN c.card_id IS NOT NULL THEN 1 ELSE 0 END), 0)", []),
+            ("Tarjetas", "cards c JOIN player_match_details p ON c.player_id = p.player_id AND c.match_id = p.match_id", "COALESCE(SUM(CASE WHEN c.card_type = 'Red' THEN 2 WHEN card_id IS NOT NULL THEN 1 ELSE 0 END), 0)", []),
             ("Cabezazos", "headers s JOIN player_match_details p ON s.player_id = p.player_id AND s.match_id = p.match_id", "COUNT(*)", [])
         ]
         
@@ -1770,11 +1892,9 @@ def player_info(player_id, match_id=None):
 
         for scope_name, scope_filter in scopes.items():
             for label, table_clause, agg_func, metric_filters in metrics:
-                # Construccion limpia de la clausula WHERE
                 where_conditions = [scope_filter] + metric_filters
                 where_clause = " WHERE " + " AND ".join(where_conditions)
                 
-                # Query final limpia
                 query = f"""
                     SELECT p.player_id, {agg_func} as val 
                     FROM {table_clause} 
@@ -1782,14 +1902,10 @@ def player_info(player_id, match_id=None):
                     GROUP BY p.player_id 
                     ORDER BY val DESC
                 """
-                
                 res = conn.execute(query).fetchall()
-                
-                # Buscamos al jugador en el ranking
                 for i, r in enumerate(res):
                     pos = i + 1
-                    if pos > 20: break # Limite Top 20 solicitado
-                    
+                    if pos > 20: break
                     if str(r[0]) == str(player_id):
                         results[scope_name].append({
                             "label": label,
@@ -1797,116 +1913,27 @@ def player_info(player_id, match_id=None):
                             "total": int(r['val'])
                         })
                         break
-        return results    
-    match_stats = get_stats_summary([match_id])
-    
-    # Contexto Equipo: Buscar team_id en el partido actual o usar el del ultimo partido jugado
-    ctx_team = conn.execute('SELECT team_id FROM player_match_details WHERE match_id=? AND player_id=?', (str(match_id), str(player_id))).fetchone()
-    tid_l5 = str(ctx_team['team_id']) if ctx_team else str(info['team_id'])
+        return results
 
-    # Ultimos 10 partidos DEL EQUIPO (jugados o no por el player)
-    team_l10_rows = conn.execute('''
-        SELECT m.id, m.date, m.home_team, m.away_team, m.home_team_id, m.away_team_id, m.score,
-               pmd.minutes_played, pmd.is_starter
-        FROM matches m
-        LEFT JOIN player_match_details pmd ON m.id = pmd.match_id AND pmd.player_id = ?
-        WHERE (m.home_team_id = ? OR m.away_team_id = ?) AND m.finished = 1
-        ORDER BY m.date DESC LIMIT 10
-    ''', (player_id, tid_l5, tid_l5)).fetchall()
-    
-    last_10_ids = [str(r['id']) for r in team_l10_rows]
-    last_5_ids = last_10_ids[:5]
-    
-    l10_stats = get_stats_summary(last_10_ids)
-    l5_stats = get_stats_summary(last_5_ids)
-
-    # Detalles visuales para la modal (Rival, Minutos, Match Stats, Resultado, Sub)
-    l10_details = []
-    for i, m in enumerate(team_l10_rows):
-        mid = str(m['id'])
-        m_stats = get_stats_summary([mid])
-        is_home = str(m['home_team_id']) == tid_l5
-        rival = m['away_team'] if is_home else m['home_team']
-        rival_id = m['away_team_id'] if is_home else m['home_team_id']
-        score = m['score'] or ''
-        
-        res_val = 'D'
-        if score and '-' in score:
-            try:
-                h_s, a_s = map(int, score.split('-'))
-                if h_s == a_s: res_val = 'D'
-                elif (is_home and h_s > a_s) or (not is_home and a_s > h_s): res_val = 'W'
-                else: res_val = 'L'
-            except: pass
-
-        pm_mins = m['minutes_played'] if m['minutes_played'] is not None else 0
-        is_starter = m['is_starter']
-        is_sub = True if (is_starter == 0 and pm_mins > 0) else False
-
-        l10_details.append({
-            "date": m['date'], "rival": rival, "rival_id": rival_id, 
-            "minutes": pm_mins, "cond": 'L' if is_home else 'V', "match_id": mid,
-            "score": score, "result": res_val, "is_sub": is_sub,
-            "match_stats": m_stats
-        })
-    
-    l5_details = l10_details[:5]
-    
-    teams_str = ",".join([f"'{t}'" for t in valid_teams])
-    all_ids = [r[0] for r in conn.execute(f'SELECT match_id FROM player_match_details WHERE player_id=? AND team_id IN ({teams_str}) and minutes_played > 0', (player_id,)).fetchall()]
-    gen_stats = get_stats_summary(all_ids)
-    
     rankings_top = get_top_rankings()
     note = conn.execute('SELECT notes FROM player_notes WHERE player_id = ?', (player_id,)).fetchone()
+    conn.close()
 
-    # Obtener todos los tiros del jugador
-    player_shots = []
-    shots_rows = conn.execute(f'''
-        SELECT s.x, s.y, s.blocked_x, s.blocked_y, s.goal_cross_x, s.goal_cross_y,
-               s.is_blocked, s.outcome, s.situation, s.shot_type, s.on_target, s.minute, m.home_team_id, m.away_team_id, s.team_id, m.date, m.id as match_id, m.home_team, m.away_team
-        FROM shots s
-        JOIN matches m ON s.match_id = m.id
-        WHERE s.player_id = ? AND s.team_id IN ({teams_str}) AND s.x IS NOT NULL AND s.y IS NOT NULL
-        ORDER BY m.date DESC
-    ''', (player_id,)).fetchall()
-    
-    for s in shots_rows:
-        is_home = str(s['team_id']) == str(s['home_team_id'])
-        rival = s['away_team'] if is_home else s['home_team']
-        rival_id = str(s['away_team_id']) if is_home else str(s['home_team_id'])
-        
-        let_px = s['x']
-        let_py = s['y']
-        let_cx = s['goal_cross_x'] 
-        let_cy = s['goal_cross_y']
-        
-        if s['is_blocked']:
-            let_cx = s['blocked_x']
-            let_cy = s['blocked_y']
-
-        player_shots.append({
-            "x": let_px, "y": let_py,
-            "cx": let_cx, "cy": let_cy,
-            "is_blocked": s['is_blocked'], "outcome": s['outcome'],
-            "situation": s['situation'],
-            "shot_type": s['shot_type'] ,
-            "on_target": s['on_target'], 
-            "minute": s['minute'],
-            "is_home": is_home,
-            "date": s['date'],
-            "match_id": str(s['match_id']),
-            "rival": rival,
-            "rival_id": rival_id
-        })
+    # Si hay contexto de partido específico, buscar sus stats
+    current_match_record = next((m for m in all_matches if m['match_id'] == str(match_id)), None)
+    partido_stats = current_match_record['match_stats'] if current_match_record else {
+        "pj": 0, "mins": 0, "shots": 0, "target": 0, "long": 0, "headers": 0,
+        "tackles": 0, "offsides": 0, "cards": 0, "f_c": 0, "f_r": 0
+    }
 
     d_info = dict(info)
     return jsonify({
-        "match_id": str(match_id),
+        "match_id": str(match_id or d_info.get('match_id', '')),
         "home_team_id": str(info["home_team_id"]),
         "away_team_id": str(info["away_team_id"]),
         "home_team": info["home_team"],
         "away_team": info["away_team"],
-        "score": info["score"] if "score" in info.keys() and info["score"] else "",
+        "score": info["score"] if info["score"] else "",
         "team_id": str(d_info['team_id']),
         "name": d_info.get('short_name') or d_info.get('name') or f"{d_info.get('first_name', '')} {d_info.get('last_name', '')}".strip(),
         "team": info["home_team"] if str(info["team_id"]) == str(info["home_team_id"]) else info["away_team"],
@@ -1914,12 +1941,13 @@ def player_info(player_id, match_id=None):
         "number": info["shirt_number"],
         "age": info["age"],
         "teams_history": teams_history,
-        "stats": {"partido": match_stats, "l10": l10_stats, "l5": l5_stats, "general": gen_stats},
-        "last_10_details": l10_details,
-        "last_5_details": l5_details,
+        "teams_names": teams_names,
+        "all_matches": all_matches,
+        "team_matches": team_matches,
+        "current_match_stats": partido_stats,
+        "shots": player_shots,
         "rankings_top": rankings_top,
-        "notes": note["notes"] if note else "",
-        "shots": player_shots
+        "notes": note["notes"] if note else ""
     })
 
 

@@ -131,11 +131,11 @@
         }
 
         window.currentRankings = d.rankings_top;
-        window.currentPlayerData = d.stats;
-        window.playerL5Details = d.last_5_details;
-        window.playerL10Details = d.last_10_details;
+        window.playerAllMatches = d.all_matches || [];
+        window.playerTeamMatches = d.team_matches || {};
+        window.allPlayerShots = d.shots || [];
         window.playerTeamId = d.team_id;
-        window.playerShots = d.shots || [];
+        window.playerTeamsNames = d.teams_names || {};
         window.activePlayerTeams = d.teams_history ? [...d.teams_history] : [];
         window.currentPid = pid;
         window.currentMatchContext = {
@@ -146,13 +146,17 @@
             away_team: d.away_team,
             score: d.score || ''
         };
+        window.currentMatchStats = d.current_match_stats || {};
         
         let teamSelectorHtml = '';
         if (d.teams_history && d.teams_history.length > 0) {
             teamSelectorHtml = `<div class="flex items-center gap-2 mb-3 bg-slate-900/30 p-2 rounded-2xl border border-slate-800 shrink-0">
-                <span class="text-[10px] font-black text-slate-500 uppercase ml-2">Contexto:</span>
-                <div class="flex gap-1 overflow-x-auto no-scrollbar">
-                    ${d.teams_history.map(tid => `<img id="team-sel-${tid}" onclick="toggleTeam('${tid}', '${pid}', '${d.match_id}')" src="/static/${tid}_xsmall.png" onerror="this.src='/static/none.png'" class="w-8 h-8 object-contain cursor-pointer rounded-lg border-2 ${window.activePlayerTeams.includes(tid) ? 'border-sky-500 shadow-[0_0_5px_rgba(14,165,233,0.5)]' : 'border-slate-700 opacity-30 grayscale'} hover:scale-110 transition-all">`).join('')}
+                <span class="text-[12px] font-black text-slate-500 uppercase ml-2">Contexto:</span>
+                <div class="flex gap-2 overflow-visible no-scrollbar">
+                    ${d.teams_history.map(tid => {
+                        const tName = (d.teams_names && d.teams_names[tid]) || `Equipo ${tid}`;
+                        return `<img id="team-sel-${tid}" onclick="toggleTeam('${tid}')" src="/static/${tid}_xsmall.png" onerror="this.src='/static/none.png'" title="${tName}" class="w-9 h-9 p-1 object-contain cursor-pointer rounded-lg border-2 ${window.activePlayerTeams.includes(tid) ? 'border-sky-500 shadow-[0_0_5px_rgba(14,165,233,0.5)]' : 'border-slate-700 opacity-30 grayscale'} hover:scale-110 transition-all">`;
+                    }).join('')}
                 </div>
             </div>`;
         }
@@ -181,7 +185,7 @@
                             <button onclick="switchPlayerTab('l5')" id="tab-btn-l5" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg text-slate-500">Ult 5</button>
                             <button onclick="switchPlayerTab('part')" id="tab-btn-part" class="flex-1 py-1.5 text-[10px] font-black uppercase rounded-lg text-slate-500">Partido</button>
                         </div>
-                        <div id="player-stats-content" class="space-y-1 overflow-y-auto flex-1 custom-blue-scroll no-scrollbar pr-1">${renderStatRows(d.stats.general)}</div>
+                        <div id="player-stats-content" class="space-y-1 overflow-y-auto flex-1 custom-blue-scroll no-scrollbar pr-1"></div>
                         <div id="player-modal-rival-context" class="hidden justify-center items-center gap-3 mt-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex-wrap min-h-[4rem]"></div>
                     </div>
                     <div class="w-full md:w-1/2 flex flex-col min-h-0">
@@ -213,9 +217,7 @@
                     <div class="pitch-h flex-1 relative bg-[#1a4d2e] border border-white/20 mx-auto aspect-[604/422] w-[604px] my-auto" style="background-image: linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0.8)), linear-gradient(to bottom, rgba(255,255,255,0.8), rgba(255,255,255,0.8)), radial-gradient(circle at 50% 50%, transparent 14%, rgba(255,255,255,0.2) 14.5%, rgba(255,255,255,0.2) 15.5%, transparent 16%), linear-gradient(to right, transparent 49.5%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 50.5%, transparent 51%); background-size: 2px 25%, 2px 25%, 100% 100%, 100% 100%; background-position: left center, right center, center, center; background-repeat: no-repeat;">
                         <div class="goal-post left"></div>
                         <div class="goal-post right"></div>
-                        <div id="player-shotmap-container" class="absolute inset-0 w-full h-full pointer-events-auto">
-                            ${renderPlayerShots(d.shots, 'all')}
-                        </div>
+                        <div id="player-shotmap-container" class="absolute inset-0 w-full h-full pointer-events-auto"></div>
                     </div>
                 </div>
 
@@ -233,6 +235,7 @@
                 </div>
             </div>`;
         
+        recalculatePlayerStats();
         renderRankScope('liga');
     }
 
@@ -272,15 +275,14 @@
         });
     }
 
-    async function toggleTeam(tid, pid, matchId) {
+    function toggleTeam(tid) {
         const img = document.getElementById(`team-sel-${tid}`);
         if (window.activePlayerTeams.includes(tid)) {
             if (window.activePlayerTeams.length > 1) {
                 window.activePlayerTeams = window.activePlayerTeams.filter(x => x !== tid);
                 if (img) {
-                    img.classList.add('opacity-30', 'grayscale');
+                    img.classList.add('opacity-30', 'grayscale', 'border-slate-700');
                     img.classList.remove('border-sky-500', 'shadow-[0_0_5px_rgba(14,165,233,0.5)]');
-                    img.classList.add('border-slate-700');
                 }
             }
         } else {
@@ -290,7 +292,85 @@
                 img.classList.add('border-sky-500', 'shadow-[0_0_5px_rgba(14,165,233,0.5)]');
             }
         }
-        await updatePlayerModalData(pid, matchId);
+        recalculatePlayerStats();
+    }
+
+    function recalculatePlayerStats() {
+        const activeTeams = window.activePlayerTeams || [];
+
+        // 1. Determinar lista de partidos L10 y L5
+        let l10Matches = [];
+        if (activeTeams.length === 1) {
+            // Regla: Si hay un solo equipo activo, muestra los últimos partidos del club (incluyendo 0 mins)
+            const singleTid = String(activeTeams[0]);
+            l10Matches = (window.playerTeamMatches[singleTid] || []).slice(0, 10);
+        } else {
+            // Regla: Múltiples equipos activos -> muestra partidos donde el jugador efectivamente jugó minutos (> 0)
+            l10Matches = (window.playerAllMatches || [])
+                .filter(m => activeTeams.includes(String(m.team_id)) && (m.minutes || 0) > 0)
+                .slice(0, 10);
+        }
+
+        const l5Matches = l10Matches.slice(0, 5);
+
+        // 2. Partidos generales (jugados con minutos > 0 en los equipos activos)
+        const genMatches = (window.playerAllMatches || [])
+            .filter(m => activeTeams.includes(String(m.team_id)) && (m.minutes || 0) > 0);
+
+        function aggregateStats(matchesList) {
+            const agg = {
+                pj: matchesList.filter(m => (m.minutes || 0) > 0).length,
+                mins: 0, shots: 0, target: 0, long: 0, headers: 0,
+                tackles: 0, offsides: 0, cards: 0, f_c: 0, f_r: 0
+            };
+            matchesList.forEach(m => {
+                const ms = m.match_stats || m;
+                agg.mins += (m.minutes || ms.mins || 0);
+                agg.shots += (ms.shots || 0);
+                agg.target += (ms.target || 0);
+                agg.long += (ms.long || 0);
+                agg.headers += (ms.headers || 0);
+                agg.tackles += (ms.tackles || 0);
+                agg.offsides += (ms.offsides || 0);
+                agg.cards += (ms.cards || 0);
+                agg.f_c += (ms.f_c || 0);
+                agg.f_r += (ms.f_r || 0);
+            });
+            return agg;
+        }
+
+        window.currentPlayerData = {
+            general: aggregateStats(genMatches),
+            l10: aggregateStats(l10Matches),
+            l5: aggregateStats(l5Matches),
+            partido: window.currentMatchStats || {}
+        };
+
+        window.playerL10Details = l10Matches;
+        window.playerL5Details = l5Matches;
+
+        // 3. Filtrar tiros para el mapa de tiros
+        window.playerShots = (window.allPlayerShots || []).filter(s => activeTeams.includes(String(s.team_id)));
+
+        // 4. Actualizar tabla de stats activa
+        const activeTab = document.querySelector('#pmodal-tab-stats button[id^="tab-btn-"].bg-sky-600');
+        const tabKey = activeTab ? activeTab.id.replace('tab-btn-', '') : 'gen';
+        const map = { 'gen': 'general', 'l5': 'l5', 'l10': 'l10', 'part': 'partido' };
+        const c = document.getElementById('player-stats-content');
+        if (c && window.currentPlayerData) {
+            c.innerHTML = renderStatRows(window.currentPlayerData[map[tabKey]], tabKey === 'part');
+        }
+        if (tabKey !== 'gen') {
+            updatePlayerModalContext(selectedPlayerStatKey);
+        }
+
+        // 5. Actualizar mapa de tiros
+        const smBtn = document.querySelector('#pmodal-tab-shotmap button[id^="sm-btn-"].bg-sky-600');
+        const smFilter = smBtn ? smBtn.id.replace('sm-btn-', '') : 'all';
+        const smContainer = document.getElementById('player-shotmap-container');
+        if (smContainer) {
+            smContainer.innerHTML = renderPlayerShots(window.playerShots, smFilter);
+        }
     }
 
     function filterShotMap(filter) {
@@ -335,23 +415,6 @@
                 }
             }
         });
-    }
-
-    async function updatePlayerModalData(pid, matchId) {
-        const teamsQuery = window.activePlayerTeams?.length ? `?teams=${window.activePlayerTeams.join(',')}` : '';
-        const mId = matchId || (typeof currentLoadedMatchId !== 'undefined' ? currentLoadedMatchId : null);
-        const fetchUrl = mId ? `/player_info/${pid}/${mId}${teamsQuery}` : `/player_info/${pid}${teamsQuery}`;
-        const r = await fetch(fetchUrl); 
-        if (!r.ok) return;
-        const d = await r.json(); 
-        window.currentRankings = d.rankings_top; 
-        window.currentPlayerData = d.stats; 
-        window.playerL5Details = d.last_5_details; 
-        window.playerL10Details = d.last_10_details; 
-        window.playerTeamId = d.team_id; 
-        window.playerShots = d.shots || [];
-        const activeTab = document.querySelector('#pmodal-tab-stats .bg-sky-600'); 
-        if(activeTab) switchPlayerTab(activeTab.id.replace('tab-btn-', ''));
     }
 
     function renderPlayerShots(shots, filter = 'all') {
@@ -470,37 +533,40 @@
         } else {
             selectedPlayerStatKey = key;
         }
-        const active = document.querySelector('#pmodal-tab-stats .bg-sky-600');
+        const active = document.querySelector('#pmodal-tab-stats button[id^="tab-btn-"].bg-sky-600');
         const tab = active ? active.id.replace('tab-btn-', '') : 'gen';
         const map = { 'gen': 'general', 'l5': 'l5', 'l10': 'l10', 'part': 'partido' };
         const c = document.getElementById('player-stats-content');
         if (c && window.currentPlayerData) {
             c.innerHTML = renderStatRows(window.currentPlayerData[map[tab]], tab === 'part');
         }
-        updatePlayerModalContext(selectedPlayerStatKey);
+        updatePlayerModalContext(selectedPlayerStatKey, tab);
     }
 
     function handleStatHover(key) {
-        const active = document.querySelector('#pmodal-tab-stats .bg-sky-600');
+        const active = document.querySelector('#pmodal-tab-stats button[id^="tab-btn-"].bg-sky-600');
         if (!active) return; 
         const tab = active.id.replace('tab-btn-', ''); 
         if (tab === 'gen') return;
-        updatePlayerModalContext(key);
+        updatePlayerModalContext(key, tab);
     }
 
     function handleStatLeave() { 
-        const active = document.querySelector('#pmodal-tab-stats .bg-sky-600'); 
+        const active = document.querySelector('#pmodal-tab-stats button[id^="tab-btn-"].bg-sky-600'); 
         if (!active) return;
         const tab = active.id.replace('tab-btn-', '');
         if (tab === 'gen') return;
-        updatePlayerModalContext(selectedPlayerStatKey);
+        updatePlayerModalContext(selectedPlayerStatKey, tab);
     }
 
-    function updatePlayerModalContext(statKey) {
+    function updatePlayerModalContext(statKey, currentTab = null) {
         const c = document.getElementById('player-modal-rival-context');
-        const active = document.querySelector('#pmodal-tab-stats .bg-sky-600');
-        if (!active || !c) return;
-        const tab = active.id.replace('tab-btn-', '');
+        let tab = currentTab;
+        if (!tab) {
+            const active = document.querySelector('#pmodal-tab-stats button[id^="tab-btn-"].bg-sky-600');
+            tab = active ? active.id.replace('tab-btn-', '') : 'gen';
+        }
+        if (!tab || !c) return;
         if (tab === 'gen') {
             c.classList.add('hidden');
             c.classList.remove('flex');
@@ -513,6 +579,7 @@
             const isHome = String(window.playerTeamId) === String(ctx.home_team_id);
             details = [{
                 match_id: ctx.match_id,
+                team_id: window.playerTeamId,
                 rival_id: isHome ? ctx.away_team_id : ctx.home_team_id,
                 rival: isHome ? ctx.away_team : ctx.home_team,
                 cond: isHome ? 'L' : 'V',
@@ -535,31 +602,32 @@
 
         c.innerHTML = details.map(m => {
             const val = (statKey && m.match_stats) ? (m.match_stats[statKey] ?? 0) : null;
-            const mins = m.minutes || (m.match_stats ? m.match_stats.mins : 0) || 0;
+            const mins = m.minutes ?? 0;
             const isSub = m.is_sub || false;
             const scoreStr = m.score || '-';
             const resClass = m.result === 'W' ? 'text-emerald-500' : (m.result === 'L' ? 'text-red-500' : 'text-slate-400');
             const condClass = m.cond === 'L' ? 'text-green-500' : 'text-yellow-500';
             const statClass = val !== null ? (val > 0 ? 'text-sky-400' : 'text-white/50') : 'text-transparent';
+            const teamName = m.team_name || (window.playerTeamsNames && window.playerTeamsNames[m.team_id]) || 'Equipo del jugador';
+            const rivalName = m.rival || 'Rival';
 
-            return `<div class="flex flex-col items-center min-w-[32px]" data-match-id="${m.match_id}">
-                <span class="text-[9px] font-black ${condClass}">${m.cond}</span>
-                <a href="/match/${m.match_id}"><img src="/static/${m.rival_id || 'none'}_xsmall.png" onerror="this.src='/static/none.png'" class="w-6 h-6 object-contain hover:scale-110 transition-transform"></a>
+            return `<div class="flex flex-col items-center min-w-[34px]" data-match-id="${m.match_id}">
+                <div class="flex items-center gap-0.5 mb-0.5">
+                    <span class="text-[9px] font-black ${condClass}">${m.cond}</span>
+                    ${m.team_id ? `<img src="/static/${m.team_id}_xsmall.png" onerror="this.src='/static/none.png'" class="w-3 h-3 object-contain rounded-full border border-slate-700 bg-slate-900 shadow-sm cursor-help" title="Jugó en: ${teamName}">` : ''}
+                </div>
+                <a href="/match/${m.match_id}" title="Rival: ${rivalName}"><img src="/static/${m.rival_id || 'none'}_xsmall.png" onerror="this.src='/static/none.png'" title="Rival: ${rivalName}" class="w-6 h-6 object-contain hover:scale-110 transition-transform"></a>
                 <span class="text-[10px] font-black ${resClass}">${scoreStr}</span>
                 <span class="dynamic-stat text-[11px] font-bold ${statClass} h-4 min-h-[1rem] flex items-center justify-center">${val !== null ? val : '-'}</span>
-                <span class="dynamic-substat text-[10px] font-black text-slate-300 h-3 min-h-[0.75rem] flex items-center justify-center">${mins > 0 ? (isSub ? '<span class="text-emerald-400 font-black mr-0.5">⬆</span>' : '') + mins + "'" : ''}</span>
+                <span class="dynamic-substat text-[10px] font-black text-slate-300 h-3 min-h-[0.75rem] flex items-center justify-center">${mins > 0 ? (isSub ? '<span class="text-emerald-400 font-black mr-0.5">⬆</span>' : '') + mins + "'" : (m.minutes === 0 ? '0\'' : '')}</span>
             </div>`;
         }).join('');
     }
 
     function switchPlayerTab(tab) {
         selectedPlayerStatKey = null;
-        const c = document.getElementById('player-stats-content'), rc = document.getElementById('player-modal-rival-context'), map = { 'gen': 'general', 'l5': 'l5', 'l10': 'l10', 'part': 'partido' };
-        if (!c || !window.currentPlayerData) return;
-        c.innerHTML = renderStatRows(window.currentPlayerData[map[tab]], tab === 'part');
-        if (tab !== 'gen') updatePlayerModalContext(null);
-        else if (rc) { rc.classList.add('hidden'); rc.classList.remove('flex'); }
 
+        // 1. Actualizar clases visuales de los botones de pestañas primero
         ['gen', 'l5', 'l10', 'part'].forEach(t => { 
             const b = document.getElementById(`tab-btn-${t}`); 
             if (b) { 
@@ -572,5 +640,18 @@
                 }
             }
         });
+
+        // 2. Actualizar las filas de estadísticas
+        const c = document.getElementById('player-stats-content'), rc = document.getElementById('player-modal-rival-context'), map = { 'gen': 'general', 'l5': 'l5', 'l10': 'l10', 'part': 'partido' };
+        if (!c || !window.currentPlayerData) return;
+        c.innerHTML = renderStatRows(window.currentPlayerData[map[tab]], tab === 'part');
+
+        // 3. Actualizar la barra de contexto de rivales
+        if (tab !== 'gen') {
+            updatePlayerModalContext(null, tab);
+        } else if (rc) {
+            rc.classList.add('hidden');
+            rc.classList.remove('flex');
+        }
     }
 </script>

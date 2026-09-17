@@ -4,5 +4,3 @@ requests
 beautifulsoup4
 curl_cffi
 gunicorn
-playwright
-camoufox

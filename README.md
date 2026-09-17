@@ -39,7 +39,7 @@ Toda la información estadística, detalles de jugadores, formaciones y eventos 
 ## 🌐 Demo Online
 
 Explora la aplicación en producción aquí:
-🔗 **[arg-stats.up.railway.app](https://arg-stats.up.railway.app)**
+🔗 **[arg-stats.onrender.com](https://arg-stats.onrender.com)**
 
 ---
 
@@ -49,7 +49,7 @@ Explora la aplicación en producción aquí:
 * **Servidor WSGI:** [Gunicorn](https://gunicorn.org/) (Multithread)
 * **Base de Datos:** SQLite3 con vistas personalizadas e índices optimizados
 * **Procesamiento de Datos:** [Pandas](https://pandas.pydata.org/)
-* **Networking / Scraping:** [Camoufox](https://github.com/daijro/camoufox) (Firefox Anti-Detect), Playwright, Requests, BeautifulSoup4
+* **Networking / Scraping:** [`curl_cffi`](https://github.com/lexiforest/curl_cffi), Requests, BeautifulSoup4
 * **Frontend:** HTML5 Semántico, CSS3, JavaScript Vanilla, Jinja2 Templates
 
 ---

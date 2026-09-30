@@ -18,7 +18,7 @@ base_url = "https://www.sofascore.com/api/v1"
 _curl_session = None
 
 _DEFAULT_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15',
     'Accept': '*/*',
     'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
     'Origin': 'https://www.sofascore.com',
@@ -30,8 +30,12 @@ def get_curl_session():
     """Obtiene o inicializa la sesión persistente de curl_cffi."""
     global _curl_session
     if _curl_session is None:
-        _curl_session = curl_requests.Session(impersonate="chrome124")
+        _curl_session = curl_requests.Session(impersonate="safari15_5")
         _curl_session.headers.update(_DEFAULT_HEADERS)
+        try:
+            _curl_session.get("https://www.sofascore.com/", timeout=10)
+        except Exception:
+            pass
     return _curl_session
 
 
